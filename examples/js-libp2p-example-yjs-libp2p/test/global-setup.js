@@ -1,10 +1,12 @@
+/* eslint-disable no-console, no-unused-vars */
+
 import { spawn } from 'child_process'
 import { writeFileSync } from 'fs'
 import path from 'path'
 
-export default async function globalSetup() {
+export default async function globalSetup () {
   console.log('Starting relay server...')
-  
+
   return new Promise((resolve, reject) => {
     // Start relay server as a child process
     const relayProcess = spawn('node', ['relay.js'], {
@@ -25,18 +27,18 @@ export default async function globalSetup() {
       if (match && !relayMultiaddr) {
         relayMultiaddr = match[0]
         console.log(`Relay server started with multiaddr: ${relayMultiaddr}`)
-        
+
         // Store relay info for tests
         const relayInfo = {
           multiaddr: relayMultiaddr,
           pid: relayProcess.pid
         }
-        
+
         writeFileSync(
           path.resolve(process.cwd(), 'test/relay-info.json'),
           JSON.stringify(relayInfo, null, 2)
         )
-        
+
         // Give the relay a moment to fully initialize
         setTimeout(() => resolve(), 1000)
       }

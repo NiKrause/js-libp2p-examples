@@ -1,19 +1,19 @@
 /* eslint-disable no-console */
 
+import { gossipsub } from '@chainsafe/libp2p-gossipsub'
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
 import { autoNAT } from '@libp2p/autonat'
 import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
 import { dcutr } from '@libp2p/dcutr'
 import { identify, identifyPush } from '@libp2p/identify'
-import { gossipsub } from '@chainsafe/libp2p-gossipsub'
+import { ping } from '@libp2p/ping'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
 import * as filters from '@libp2p/websockets/filters'
 import { multiaddr } from '@multiformats/multiaddr'
 import { createLibp2p } from 'libp2p'
-import { ping } from '@libp2p/ping'
 import * as Y from 'yjs'
 import { Libp2pProvider } from './yjs-libp2p-provider.js'
 
@@ -42,72 +42,67 @@ const log = (message) => {
 // Update peer display
 const updatePeerDisplay = () => {
   if (!libp2pNode) return
-  
+
   const connections = libp2pNode.getConnections()
   const peerMap = new Map()
-  
+
   // Group connections by peer
   for (const conn of connections) {
     const peerId = conn.remotePeer.toString()
     if (!peerMap.has(peerId)) {
       peerMap.set(peerId, [])
     }
-    
+
     // Get transport from connection and remote address
     const remoteAddr = conn.remoteAddr.toString()
     let transport = 'unknown'
-    
+
     // Check for circuit relay (p2p-circuit in address)
     if (remoteAddr.includes('/p2p-circuit')) {
       transport = 'relay'
-    }
-    // Check for WebRTC
-    else if (remoteAddr.includes('/webrtc')) {
+    } else if (remoteAddr.includes('/webrtc')) {
+      // Check for WebRTC
       transport = 'webrtc'
-    }
-    // Check for WebTransport
-    else if (remoteAddr.includes('/webtransport')) {
+    } else if (remoteAddr.includes('/webtransport')) {
+      // Check for WebTransport
       transport = 'webtransport'
-    }
-    // Check for WebSocket Secure
-    else if (remoteAddr.includes('/wss') || remoteAddr.includes('/tls/ws')) {
+    } else if (remoteAddr.includes('/wss') || remoteAddr.includes('/tls/ws')) {
+      // Check for WebSocket Secure
       transport = 'websocket-secure'
-    }
-    // Check for WebSocket
-    else if (remoteAddr.includes('/ws')) {
+    } else if (remoteAddr.includes('/ws')) {
+      // Check for WebSocket
       transport = 'websocket'
-    }
-    // If it has TCP but also has /ws, it's websocket over TCP
-    else if (remoteAddr.includes('/tcp')) {
+    } else if (remoteAddr.includes('/tcp')) {
+      // If it has TCP but also has /ws, it's websocket over TCP
       transport = 'tcp'
     }
-    
+
     peerMap.get(peerId).push({ transport, addr: remoteAddr })
   }
-  
+
   // Update count
   peerCountEl.textContent = peerMap.size
-  
+
   // Show/hide peers section
   if (peerMap.size > 0) {
     peersEl.style.display = 'block'
   } else {
     peersEl.style.display = 'none'
   }
-  
+
   // Update peer list
   peerListEl.innerHTML = ''
   for (const [peerId, transports] of peerMap) {
     const peerDiv = document.createElement('div')
     peerDiv.className = 'peer'
-    
+
     const peerIdSpan = document.createElement('div')
     peerIdSpan.className = 'peer-id'
     peerIdSpan.textContent = peerId
     peerDiv.appendChild(peerIdSpan)
-    
+
     const transportDiv = document.createElement('div')
-    
+
     // Show each connection with its transport
     for (const { transport, addr } of transports) {
       const badge = document.createElement('span')
@@ -116,9 +111,9 @@ const updatePeerDisplay = () => {
       badge.title = addr // Show full address on hover
       transportDiv.appendChild(badge)
     }
-    
+
     peerDiv.appendChild(transportDiv)
-    
+
     peerListEl.appendChild(peerDiv)
   }
 }
@@ -201,9 +196,9 @@ connectBtn.onclick = async () => {
           emitSelf: false,
           allowPublishToZeroTopicPeers: true,
           // Speed up gossipsub mesh formation
-          heartbeatInterval: 1000,  // Send heartbeat every 1 second (default is 1000ms)
+          heartbeatInterval: 1000, // Send heartbeat every 1 second (default is 1000ms)
           directPeers: [],
-          floodPublish: true  // Broadcast to all peers, not just mesh
+          floodPublish: true // Broadcast to all peers, not just mesh
         })
       }
     })
@@ -237,7 +232,7 @@ connectBtn.onclick = async () => {
     editor.oninput = () => {
       const newText = editor.value
       const currentText = text.toString()
-      
+
       if (newText !== currentText) {
         yjsDoc.transact(() => {
           text.delete(0, currentText.length)
@@ -262,7 +257,6 @@ connectBtn.onclick = async () => {
       log(`Disconnected from peer: ${evt.detail}`)
       updatePeerDisplay()
     })
-
   } catch (err) {
     log(`Error: ${err.message}`)
     console.error(err)

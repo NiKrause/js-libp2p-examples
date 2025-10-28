@@ -1,15 +1,17 @@
-import { test, expect } from '@playwright/test'
+/* eslint-disable no-console */
+
 import { readFileSync } from 'fs'
 import path from 'path'
+import { test, expect } from '@playwright/test'
 
 const url = 'http://localhost:5173'
 
 // Helper to connect a page to the relay
-async function connectToRelay(page, relayMultiaddr, topic = 'test-topic') {
+async function connectToRelay (page, relayMultiaddr, topic = 'test-topic') {
   await page.fill('#relay', relayMultiaddr)
   await page.fill('#topic', topic)
   await page.click('#connect')
-  
+
   // Wait for connection to establish
   await page.waitForFunction(
     () => document.getElementById('editor').disabled === false,
@@ -19,7 +21,7 @@ async function connectToRelay(page, relayMultiaddr, topic = 'test-topic') {
 
 test.describe('Yjs + libp2p example', () => {
   let relayMultiaddr
-  
+
   test.beforeAll(() => {
     // Load relay multiaddr from global setup
     const relayInfo = JSON.parse(
@@ -31,19 +33,19 @@ test.describe('Yjs + libp2p example', () => {
   test('should load page in two browsers', async ({ browser }) => {
     const context1 = await browser.newContext()
     const context2 = await browser.newContext()
-    
+
     const page1 = await context1.newPage()
     const page2 = await context2.newPage()
 
     await page1.goto(url)
     await page2.goto(url)
-    
+
     const heading1 = await page1.locator('h1').textContent()
     const heading2 = await page2.locator('h1').textContent()
 
     expect(heading1).toBe('Yjs + libp2p')
     expect(heading2).toBe('Yjs + libp2p')
-    
+
     await context1.close()
     await context2.close()
   })
@@ -51,7 +53,7 @@ test.describe('Yjs + libp2p example', () => {
   test('should sync text between two browsers', async ({ browser }) => {
     const context1 = await browser.newContext()
     const context2 = await browser.newContext()
-    
+
     const page1 = await context1.newPage()
     const page2 = await context2.newPage()
 
@@ -114,7 +116,7 @@ test.describe('Yjs + libp2p example', () => {
 
     const page1Text = await page1.inputValue('#editor')
     expect(page1Text).toBe(expectedText)
-    
+
     await context1.close()
     await context2.close()
   })
