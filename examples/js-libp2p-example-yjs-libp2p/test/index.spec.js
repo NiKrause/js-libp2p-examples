@@ -82,8 +82,18 @@ test.describe('Yjs + libp2p example', () => {
 
     // Wait for peers to discover each other via pubsub
     // Even without direct P2P connection, pubsub through relay should work
-    // Wait for sync-request/response to complete
-    await page1.waitForTimeout(3000)
+    // Wait for gossipsub mesh to form and sync-request/response to complete
+    // Gossipsub heartbeat is 1000ms, give it more time to propagate subscriptions
+    await page1.waitForTimeout(15000)
+
+    // Check if peers can see each other in gossipsub
+    const page1Peers = await page1.evaluate(() => {
+      return window.libp2pNode?.getConnections().length || 0
+    })
+    const page2Peers = await page2.evaluate(() => {
+      return window.libp2pNode?.getConnections().length || 0
+    })
+    console.log(`Page1 connections: ${page1Peers}, Page2 connections: ${page2Peers}`)
 
     // Click into editor and type in page 1
     await page1.click('#editor')

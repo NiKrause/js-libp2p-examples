@@ -105,22 +105,31 @@ export class Libp2pProvider {
    */
   async _handlePeerDiscovered (evt) {
     const peer = evt.detail
-    console.log(`Discovered peer: ${peer.id.toString()}`)
+    const peerId = peer.id.toString()
+    console.log(`[Provider] Discovered peer: ${peerId}`)
+
+    // Don't dial ourselves
+    if (this.libp2p.peerId.equals(peer.id)) {
+      console.log(`[Provider] Skipping self: ${peerId}`)
+      return
+    }
 
     // Check if we're already connected to this peer
     const connections = this.libp2p.getConnections(peer.id)
-    if (!connections || connections.length === 0) {
-      console.log(`Dialing new peer: ${peer.id.toString()}`)
+    if (connections && connections.length > 0) {
+      console.log(`[Provider] Already connected to peer: ${peerId} (${connections.length} connections)`)
+      return
+    }
 
-      try {
-        // Dial the peer ID directly - libp2p will handle finding the best route
-        await this.libp2p.dial(peer.id)
-        console.log(`Successfully dialed peer: ${peer.id.toString()}`)
-      } catch (error) {
-        console.error(`Failed to dial peer ${peer.id.toString()}:`, error.message)
-      }
-    } else {
-      console.log(`Already connected to peer: ${peer.id.toString()}`)
+    console.log(`[Provider] Dialing new peer: ${peerId}`)
+    console.log(`[Provider] Peer addresses:`, peer.multiaddrs.map(ma => ma.toString()))
+
+    try {
+      // Dial the peer ID directly - libp2p will handle finding the best route
+      await this.libp2p.dial(peer.id)
+      console.log(`[Provider] ✅ Successfully dialed peer: ${peerId}`)
+    } catch (error) {
+      console.error(`[Provider] ❌ Failed to dial peer ${peerId}:`, error.message)
     }
   }
 

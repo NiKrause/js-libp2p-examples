@@ -205,6 +205,9 @@ connectBtn.onclick = async () => {
 
     log(`libp2p node created with id: ${libp2pNode.peerId}`)
 
+    // Expose for testing
+    window.libp2pNode = libp2pNode
+
     // Connect to relay
     log('Connecting to relay...')
     const ma = multiaddr(relayAddr)

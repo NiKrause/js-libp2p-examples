@@ -108,33 +108,66 @@ server.addEventListener('peer:disconnect', (evt) => {
   console.log(`Disconnected from peer: ${evt.detail.toString()}`)
 })
 
-// Subscribe to the Yjs topic to relay messages and log them
-const YJS_TOPIC = 'yjs-doc-1'
-await server.services.pubsub.subscribe(YJS_TOPIC)
-console.log(`📡 Relay subscribed to topic: ${YJS_TOPIC}`)
-
-// Log all messages passing through
+// Log all messages passing through ALL topics
 server.services.pubsub.addEventListener('message', (evt) => {
-  if (evt.detail.topic === YJS_TOPIC) {
-    console.log('\n📨 Message received on', YJS_TOPIC)
-    console.log('  From:', evt.detail.from.toString())
-    console.log('  Data length:', evt.detail.data.length, 'bytes')
+  console.log('\n📨 Message received on topic:', evt.detail.topic)
+  console.log('  From:', evt.detail.from.toString())
+  console.log('  Data length:', evt.detail.data.length, 'bytes')
 
-    try {
-      const msgStr = new TextDecoder().decode(evt.detail.data)
-      const msg = JSON.parse(msgStr)
-      console.log('  Type:', msg.type)
-    } catch (e) {
-      console.log('  (Could not parse message)')
+  try {
+    const msgStr = new TextDecoder().decode(evt.detail.data)
+    const msg = JSON.parse(msgStr)
+    console.log('  Type:', msg.type)
+  } catch (e) {
+    console.log('  (Could not parse message data)')
+  }
+})
+
+// Subscribe to topics dynamically as we see them
+const subscribedTopics = new Set()
+
+server.services.pubsub.addEventListener('subscription-change', async (evt) => {
+  console.log('\n📢 Subscription change:', evt.detail)
+  const peerId = evt.detail.peerId ? evt.detail.peerId.toString() : 'unknown'
+  console.log('  Peer:', peerId)
+  console.log('  Subscriptions:', evt.detail.subscriptions)
+
+  // Auto-subscribe to any Yjs or test topics we see
+  if (evt.detail.subscriptions && Array.isArray(evt.detail.subscriptions)) {
+    for (const sub of evt.detail.subscriptions) {
+      if (sub && sub.topic) {
+        const topic = sub.topic
+        if ((topic.startsWith('yjs-') || topic.startsWith('test-')) && !subscribedTopics.has(topic)) {
+          subscribedTopics.add(topic)
+          try {
+            await server.services.pubsub.subscribe(topic)
+            console.log(`📡 Relay auto-subscribed to: ${topic}`)
+          } catch (err) {
+            console.error('Failed to subscribe:', err)
+          }
+        }
+      }
     }
   }
 })
 
-// Periodically log subscribers to the topic
+// Subscribe to default Yjs topic
+const DEFAULT_TOPIC = 'yjs-doc-1'
+await server.services.pubsub.subscribe(DEFAULT_TOPIC)
+subscribedTopics.add(DEFAULT_TOPIC)
+console.log(`📡 Relay subscribed to default topic: ${DEFAULT_TOPIC}`)
+
+// Periodically log all active topics and subscribers
 setInterval(() => {
-  const subscribers = server.services.pubsub.getSubscribers(YJS_TOPIC)
-  if (subscribers.length > 0) {
-    console.log(`\n👥 Subscribers to ${YJS_TOPIC}:`, subscribers.map(p => p.toString()))
+  const topics = server.services.pubsub.getTopics()
+  if (topics.length > 0) {
+    console.log('\n📋 Active topics:', topics)
+    for (const topic of topics) {
+      const subscribers = server.services.pubsub.getSubscribers(topic)
+      if (subscribers.length > 0) {
+        console.log(`  👥 ${topic}: ${subscribers.length} subscribers`)
+      }
+    }
   }
 }, 10000)
 
