@@ -1,4 +1,4 @@
-/* eslint-disable no-console, jsdoc/require-param-type, default-case */
+/* eslint-disable no-console, default-case */
 
 import { fromString, toString } from 'uint8arrays'
 import * as Y from 'yjs'
@@ -101,7 +101,7 @@ export class Libp2pProvider {
   /**
    * Handle peer discovery events
    *
-   * @param evt
+   * @param {any} evt
    */
   async _handlePeerDiscovered (evt) {
     const peer = evt.detail
@@ -122,7 +122,7 @@ export class Libp2pProvider {
     }
 
     console.log(`[Provider] Dialing new peer: ${peerId}`)
-    console.log(`[Provider] Peer addresses:`, peer.multiaddrs.map(ma => ma.toString()))
+    console.log('[Provider] Peer addresses:', peer.multiaddrs.map(ma => ma.toString()))
 
     try {
       // Dial the peer ID directly - libp2p will handle finding the best route
@@ -150,12 +150,14 @@ export class Libp2pProvider {
   /**
    * Handle Yjs document updates
    *
-   * @param update
-   * @param origin
+   * @param {Uint8Array} update
+   * @param {any} origin
    */
   _handleDocUpdate (update, origin) {
     // Don't broadcast updates that came from the network
-    if (origin === this) return
+    if (origin === this) {
+      return
+    }
 
     console.log('Broadcasting Yjs update to peers')
     // Broadcast the update to all peers via pubsub
@@ -168,12 +170,16 @@ export class Libp2pProvider {
   /**
    * Handle incoming pubsub messages
    *
-   * @param evt
+   * @param {any} evt
    */
   _handlePubsubMessage (evt) {
     // Ignore our own messages
-    if (evt.detail.topic !== this.topic) return
-    if (this.libp2p.peerId.equals(evt.detail.from)) return
+    if (evt.detail.topic !== this.topic) {
+      return
+    }
+    if (this.libp2p.peerId.equals(evt.detail.from)) {
+      return
+    }
 
     console.log(`Received pubsub message from ${evt.detail.from.toString()}, type: ${evt.detail.topic}`)
 
@@ -200,7 +206,7 @@ export class Libp2pProvider {
   /**
    * Apply an update to the document
    *
-   * @param updateBase64
+   * @param {string} updateBase64
    */
   _applyUpdate (updateBase64) {
     console.log('Applying Yjs update from network')
@@ -216,7 +222,7 @@ export class Libp2pProvider {
   /**
    * Handle sync request from a peer
    *
-   * @param stateVectorBase64
+   * @param {string} stateVectorBase64
    */
   _handleSyncRequest (stateVectorBase64) {
     const stateVector = fromString(stateVectorBase64, 'base64')
@@ -231,7 +237,7 @@ export class Libp2pProvider {
   /**
    * Handle sync response from a peer
    *
-   * @param updateBase64
+   * @param {string} updateBase64
    */
   _handleSyncResponse (updateBase64) {
     this._applyUpdate(updateBase64)
@@ -240,7 +246,7 @@ export class Libp2pProvider {
   /**
    * Publish a message to the pubsub topic
    *
-   * @param message
+   * @param {object} message
    */
   async _publishMessage (message) {
     try {

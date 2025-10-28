@@ -41,7 +41,9 @@ const log = (message) => {
 
 // Update peer display
 const updatePeerDisplay = () => {
-  if (!libp2pNode) return
+  if (!libp2pNode) {
+    return
+  }
 
   const connections = libp2pNode.getConnections()
   const peerMap = new Map()

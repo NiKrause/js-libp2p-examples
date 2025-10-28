@@ -133,20 +133,28 @@ server.services.pubsub.addEventListener('subscription-change', async (evt) => {
   console.log('  Subscriptions:', evt.detail.subscriptions)
 
   // Auto-subscribe to any Yjs or test topics we see
-  if (evt.detail.subscriptions && Array.isArray(evt.detail.subscriptions)) {
-    for (const sub of evt.detail.subscriptions) {
-      if (sub && sub.topic) {
-        const topic = sub.topic
-        if ((topic.startsWith('yjs-') || topic.startsWith('test-')) && !subscribedTopics.has(topic)) {
-          subscribedTopics.add(topic)
-          try {
-            await server.services.pubsub.subscribe(topic)
-            console.log(`📡 Relay auto-subscribed to: ${topic}`)
-          } catch (err) {
-            console.error('Failed to subscribe:', err)
-          }
-        }
-      }
+  const subscriptions = evt.detail.subscriptions
+  if (!subscriptions || !Array.isArray(subscriptions)) {
+    return
+  }
+
+  for (const sub of subscriptions) {
+    if (!sub || !sub.topic) {
+      continue
+    }
+
+    const topic = sub.topic
+    const shouldSubscribe = (topic.startsWith('yjs-') || topic.startsWith('test-')) && !subscribedTopics.has(topic)
+    if (!shouldSubscribe) {
+      continue
+    }
+
+    subscribedTopics.add(topic)
+    try {
+      await server.services.pubsub.subscribe(topic)
+      console.log(`📡 Relay auto-subscribed to: ${topic}`)
+    } catch (err) {
+      console.error('Failed to subscribe:', err)
     }
   }
 })
