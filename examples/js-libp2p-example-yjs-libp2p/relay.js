@@ -1,5 +1,3 @@
-/* eslint-disable no-console */
-
 import { gossipsub } from '@chainsafe/libp2p-gossipsub'
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
@@ -7,13 +5,21 @@ import { autoNAT } from '@libp2p/autonat'
 import { circuitRelayServer, circuitRelayTransport } from '@libp2p/circuit-relay-v2'
 import { dcutr } from '@libp2p/dcutr'
 import { identify, identifyPush } from '@libp2p/identify'
-import { ping } from '@libp2p/ping'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { tcp } from '@libp2p/tcp'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
 import * as filters from '@libp2p/websockets/filters'
 import { createLibp2p } from 'libp2p'
+import {
+  DEBUG,
+  RELAY_TIMEOUTS,
+  RELAY_RESERVATIONS,
+  CONNECTION_CONFIG,
+  DISCOVERY_CONFIG,
+  MONITORING,
+  DEFAULT_TOPIC
+} from './relay-constants.js'
 
 const server = await createLibp2p({
   addresses: {
@@ -34,28 +40,27 @@ const server = await createLibp2p({
   ],
   peerDiscovery: [
     pubsubPeerDiscovery({
-      interval: 5000,
-      topics: ['_peer-discovery._p2p._pubsub'],
+      interval: DISCOVERY_CONFIG.INTERVAL,
+      topics: DISCOVERY_CONFIG.TOPICS,
       listenOnly: false
     })
   ],
   connectionEncrypters: [noise()],
   streamMuxers: [yamux()],
   connectionManager: {
-    inboundStreamProtocolNegotiationTimeout: 30000,
-    inboundUpgradeTimeout: 30000,
-    outboundStreamProtocolNegotiationTimeout: 30000,
-    outboundUpgradeTimeout: 30000,
-    maxConnections: 1000,
-    maxIncomingPendingConnections: 100,
-    maxPeerAddrsToDial: 100,
-    dialTimeout: 30000
+    inboundStreamProtocolNegotiationTimeout: RELAY_TIMEOUTS.PROTOCOL_NEGOTIATION_INBOUND,
+    inboundUpgradeTimeout: RELAY_TIMEOUTS.UPGRADE_INBOUND,
+    outboundStreamProtocolNegotiationTimeout: RELAY_TIMEOUTS.PROTOCOL_NEGOTIATION_OUTBOUND,
+    outboundUpgradeTimeout: RELAY_TIMEOUTS.UPGRADE_OUTBOUND,
+    maxConnections: CONNECTION_CONFIG.MAX_CONNECTIONS,
+    maxIncomingPendingConnections: CONNECTION_CONFIG.MAX_INCOMING_PENDING,
+    maxPeerAddrsToDial: CONNECTION_CONFIG.MAX_PEER_ADDRS_TO_DIAL,
+    dialTimeout: RELAY_TIMEOUTS.DIAL_TIMEOUT
   },
   connectionGater: {
     denyDialMultiaddr: () => false
   },
   services: {
-    ping: ping(),
     identify: identify(),
     identifyPush: identifyPush(),
     autoNAT: autoNAT(),
@@ -64,15 +69,15 @@ const server = await createLibp2p({
       emitSelf: false,
       allowPublishToZeroTopicPeers: true,
       canRelayMessage: true,
-      floodPublish: true // Broadcast to all peers, not just mesh
+      floodPublish: true
     }),
     relay: circuitRelayServer({
-      hopTimeout: 30000,
+      hopTimeout: RELAY_TIMEOUTS.HOP_TIMEOUT,
       reservations: {
-        maxReservations: 1000,
-        reservationTtl: 2 * 60 * 60 * 1000,
-        defaultDataLimit: BigInt(1024 * 1024 * 1024),
-        defaultDurationLimit: 2 * 60 * 1000
+        maxReservations: RELAY_RESERVATIONS.MAX_RESERVATIONS,
+        reservationTtl: RELAY_RESERVATIONS.RESERVATION_TTL,
+        defaultDataLimit: RELAY_RESERVATIONS.DEFAULT_DATA_LIMIT,
+        defaultDurationLimit: RELAY_RESERVATIONS.DEFAULT_DURATION_LIMIT
       }
     })
   }
@@ -81,58 +86,59 @@ const server = await createLibp2p({
 // Set up peer discovery listener to dial discovered peers
 server.addEventListener('peer:discovery', async (evt) => {
   const peer = evt.detail
-  console.log(`Discovered peer: ${peer.id.toString()}`)
-
-  // Check if we're already connected to this peer
   const connections = server.getConnections(peer.id)
-  if (!connections || connections.length === 0) {
-    console.log(`Dialing new peer: ${peer.id.toString()}`)
 
-    try {
-      // Dial the peer ID directly - libp2p will handle finding the best route
-      await server.dial(peer.id)
-      console.log(`Successfully dialed peer: ${peer.id.toString()}`)
-    } catch (error) {
-      console.error(`Failed to dial peer ${peer.id.toString()}:`, error.message)
+  if (connections && connections.length > 0) {
+    return
+  }
+
+  try {
+    await server.dial(peer.id)
+    if (DEBUG) {
+      // eslint-disable-next-line no-console
+      console.log(`Dialed peer: ${peer.id.toString().slice(0, 12)}...`)
     }
-  } else {
-    console.log(`Already connected to peer: ${peer.id.toString()}`)
+  } catch (error) {
+    if (DEBUG) {
+      // eslint-disable-next-line no-console
+      console.warn(`Failed to dial peer: ${error.message}`)
+    }
   }
 })
 
 server.addEventListener('peer:connect', (evt) => {
-  console.log(`Connected to peer: ${evt.detail.toString()}`)
+  if (DEBUG) {
+    // eslint-disable-next-line no-console
+    console.log(`Peer connected: ${evt.detail.toString().slice(0, 12)}...`)
+  }
 })
 
 server.addEventListener('peer:disconnect', (evt) => {
-  console.log(`Disconnected from peer: ${evt.detail.toString()}`)
-})
-
-// Log all messages passing through ALL topics
-server.services.pubsub.addEventListener('message', (evt) => {
-  console.log('\n📨 Message received on topic:', evt.detail.topic)
-  console.log('  From:', evt.detail.from.toString())
-  console.log('  Data length:', evt.detail.data.length, 'bytes')
-
-  try {
-    const msgStr = new TextDecoder().decode(evt.detail.data)
-    const msg = JSON.parse(msgStr)
-    console.log('  Type:', msg.type)
-  } catch (e) {
-    console.log('  (Could not parse message data)')
+  if (DEBUG) {
+    // eslint-disable-next-line no-console
+    console.log(`Peer disconnected: ${evt.detail.toString().slice(0, 12)}...`)
   }
 })
+
+// Log pubsub messages when debug mode is enabled
+if (DEBUG) {
+  server.services.pubsub.addEventListener('message', (evt) => {
+    try {
+      const msgStr = new TextDecoder().decode(evt.detail.data)
+      const msg = JSON.parse(msgStr)
+      // eslint-disable-next-line no-console
+      console.log(`📨 ${msg.type} on ${evt.detail.topic} from ${evt.detail.from.toString().slice(0, 12)}...`)
+    } catch {
+      // eslint-disable-next-line no-console
+      console.log(`📨 Message on ${evt.detail.topic} (${evt.detail.data.length} bytes)`)
+    }
+  })
+}
 
 // Subscribe to topics dynamically as we see them
 const subscribedTopics = new Set()
 
 server.services.pubsub.addEventListener('subscription-change', async (evt) => {
-  console.log('\n📢 Subscription change:', evt.detail)
-  const peerId = evt.detail.peerId ? evt.detail.peerId.toString() : 'unknown'
-  console.log('  Peer:', peerId)
-  console.log('  Subscriptions:', evt.detail.subscriptions)
-
-  // Auto-subscribe to any Yjs or test topics we see
   const subscriptions = evt.detail.subscriptions
   if (!subscriptions || !Array.isArray(subscriptions)) {
     return
@@ -152,35 +158,48 @@ server.services.pubsub.addEventListener('subscription-change', async (evt) => {
     subscribedTopics.add(topic)
     try {
       await server.services.pubsub.subscribe(topic)
-      console.log(`📡 Relay auto-subscribed to: ${topic}`)
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log(`📡 Auto-subscribed to: ${topic}`)
+      }
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error('Failed to subscribe:', err)
     }
   }
 })
 
 // Subscribe to default Yjs topic
-const DEFAULT_TOPIC = 'yjs-doc-1'
 await server.services.pubsub.subscribe(DEFAULT_TOPIC)
 subscribedTopics.add(DEFAULT_TOPIC)
+// eslint-disable-next-line no-console
 console.log(`📡 Relay subscribed to default topic: ${DEFAULT_TOPIC}`)
 
-// Periodically log all active topics and subscribers
-setInterval(() => {
-  const topics = server.services.pubsub.getTopics()
-  if (topics.length > 0) {
-    console.log('\n📋 Active topics:', topics)
-    for (const topic of topics) {
-      const subscribers = server.services.pubsub.getSubscribers(topic)
-      if (subscribers.length > 0) {
-        console.log(`  👥 ${topic}: ${subscribers.length} subscribers`)
+// Periodically log active topics and subscribers in debug mode
+if (DEBUG) {
+  setInterval(() => {
+    const topics = server.services.pubsub.getTopics()
+    if (topics.length > 0) {
+      // eslint-disable-next-line no-console
+      console.log('\n📋 Active topics:', topics)
+      for (const topic of topics) {
+        const subscribers = server.services.pubsub.getSubscribers(topic)
+        if (subscribers.length > 0) {
+          // eslint-disable-next-line no-console
+          console.log(`  👥 ${topic}: ${subscribers.length} subscribers`)
+        }
       }
     }
-  }
-}, 10000)
+  }, MONITORING.TOPIC_STATUS_INTERVAL)
+}
 
+// eslint-disable-next-line no-console
 console.info('\nThe relay node is running and listening on the following multiaddrs:')
+// eslint-disable-next-line no-console
 console.info('')
+// eslint-disable-next-line no-console
 console.info(server.getMultiaddrs().map((ma) => ma.toString()).join('\n'))
+// eslint-disable-next-line no-console
 console.info('')
+// eslint-disable-next-line no-console
 console.info('Copy one of the above multiaddrs and use it in the browser client')

@@ -1,20 +1,32 @@
-/* eslint-disable no-console, default-case */
-
 import { fromString, toString } from 'uint8arrays'
 import * as Y from 'yjs'
+import { DEBUG, INTERVALS } from './constants.js'
 
 /**
- * Yjs connection provider using libp2p for peer-to-peer connectivity
- * This replaces y-webrtc and uses libp2p's pubsub for synchronization
+ * Yjs connection provider using libp2p for peer-to-peer connectivity.
+ * This replaces y-webrtc and uses libp2p's pubsub for synchronization.
  */
 export class Libp2pProvider {
   /**
+   * Creates a new Libp2pProvider for Yjs document synchronization.
+   *
    * @param {string} topic - The pubsub topic to use for this document
    * @param {Y.Doc} doc - The Yjs document to sync
    * @param {import('libp2p').Libp2p} libp2p - The libp2p instance
-   * @param {object} options - Provider options
+   * @param {object} [options] - Provider options
+   * @param {object} [options.awareness] - Yjs awareness instance for cursor/selection sharing
+   * @throws {Error} If topic is empty or libp2p node is not initialized
    */
   constructor (topic, doc, libp2p, options = {}) {
+    if (!topic || typeof topic !== 'string') {
+      throw new Error('Topic must be a non-empty string')
+    }
+    if (!doc || !(doc instanceof Y.Doc)) {
+      throw new Error('doc must be a valid Yjs document')
+    }
+    if (!libp2p) {
+      throw new Error('libp2p node must be provided')
+    }
     this.topic = topic
     this.doc = doc
     this.libp2p = libp2p
@@ -44,185 +56,206 @@ export class Libp2pProvider {
   }
 
   /**
-   * Subscribe to the pubsub topic for this document
+   * Subscribe to the pubsub topic for this document.
+   * @private
+   * @returns {Promise<void>}
    */
   async _subscribeToPubsub () {
     try {
       await this.libp2p.services.pubsub.subscribe(this.topic)
       this.libp2p.services.pubsub.addEventListener('message', this._onPubsubMessage)
       this.connected = true
-      console.log(`✅ Subscribed to Yjs topic: ${this.topic}`)
 
-      // Log current subscriptions
-      const topics = this.libp2p.services.pubsub.getTopics()
-      console.log('All subscribed topics:', topics)
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log(`✅ Subscribed to Yjs topic: ${this.topic}`)
+        const topics = this.libp2p.services.pubsub.getTopics()
+        // eslint-disable-next-line no-console
+        console.log('All subscribed topics:', topics)
 
-      // Check peers multiple times as gossipsub mesh forms
-      const checkPeers = () => {
-        const peers = this.libp2p.services.pubsub.getSubscribers(this.topic)
-        console.log(`Peers subscribed to ${this.topic}:`, peers.map(p => p.toString()))
-
-        if (peers.length === 0) {
-          console.warn('⚠️ No peers subscribed to this topic yet. Waiting for gossipsub mesh...')
-        } else {
-          console.log('✅ Gossipsub mesh formed!')
+        // Check peers as gossipsub mesh forms
+        const checkPeers = () => {
+          const peers = this.libp2p.services.pubsub.getSubscribers(this.topic)
+          // eslint-disable-next-line no-console
+          console.log(`Peers on ${this.topic}:`, peers.map((p) => p.toString()))
         }
-      }
 
-      setTimeout(checkPeers, 2000)
-      setTimeout(checkPeers, 5000)
-      setTimeout(checkPeers, 10000)
+        setTimeout(checkPeers, INTERVALS.PEER_CHECK)
+        setTimeout(checkPeers, INTERVALS.PEER_CHECK * 2.5)
+        setTimeout(checkPeers, INTERVALS.PEER_CHECK * 5)
+      }
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error('Failed to subscribe to pubsub topic:', err)
+      throw err
     }
   }
 
   /**
-   * Set up peer discovery to connect to discovered peers
+   * Set up peer discovery to connect to discovered peers.
+   * @private
    */
   _setupPeerDiscovery () {
-    // Listen for peer discovery events from pubsubPeerDiscovery
     this.libp2p.addEventListener('peer:discovery', this._onPeerDiscovered)
 
-    // Track connections
-    this.libp2p.addEventListener('peer:connect', async (evt) => {
+    this.libp2p.addEventListener('peer:connect', (evt) => {
       const peerId = evt.detail.toString()
-      console.log(`Connected to peer: ${peerId}`)
       this.connectedPeers.add(peerId)
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log(`Connected to peer: ${peerId}`)
+      }
     })
 
     this.libp2p.addEventListener('peer:disconnect', (evt) => {
       const peerId = evt.detail.toString()
-      console.log(`Disconnected from peer: ${peerId}`)
       this.connectedPeers.delete(peerId)
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log(`Disconnected from peer: ${peerId}`)
+      }
     })
   }
 
   /**
-   * Handle peer discovery events
-   *
-   * @param {any} evt
+   * Handle peer discovery events.
+   * @private
+   * @param {CustomEvent} evt - Peer discovery event
+   * @returns {Promise<void>}
    */
   async _handlePeerDiscovered (evt) {
     const peer = evt.detail
     const peerId = peer.id.toString()
-    console.log(`[Provider] Discovered peer: ${peerId}`)
 
-    // Don't dial ourselves
     if (this.libp2p.peerId.equals(peer.id)) {
-      console.log(`[Provider] Skipping self: ${peerId}`)
       return
     }
 
-    // Check if we're already connected to this peer
     const connections = this.libp2p.getConnections(peer.id)
     if (connections && connections.length > 0) {
-      console.log(`[Provider] Already connected to peer: ${peerId} (${connections.length} connections)`)
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log(`Already connected to peer: ${peerId}`)
+      }
       return
     }
 
-    console.log(`[Provider] Dialing new peer: ${peerId}`)
-    console.log('[Provider] Peer addresses:', peer.multiaddrs.map(ma => ma.toString()))
-
     try {
-      // Dial the peer ID directly - libp2p will handle finding the best route
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log(`Dialing peer: ${peerId}`)
+      }
       await this.libp2p.dial(peer.id)
-      console.log(`[Provider] ✅ Successfully dialed peer: ${peerId}`)
     } catch (error) {
-      console.error(`[Provider] ❌ Failed to dial peer ${peerId}:`, error.message)
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.warn(`Failed to dial peer ${peerId}:`, error.message)
+      }
     }
   }
 
   /**
-   * Request initial document state from connected peers
+   * Request initial document state from connected peers.
+   * @private
+   * @returns {Promise<void>}
    */
   async _requestInitialState () {
-    // Wait a bit for peers to connect
     setTimeout(() => {
       const stateVector = Y.encodeStateVector(this.doc)
       this._publishMessage({
         type: 'sync-request',
         stateVector: toString(stateVector, 'base64')
+      }).catch((err) => {
+        if (DEBUG) {
+          // eslint-disable-next-line no-console
+          console.error('Failed to send sync request:', err)
+        }
       })
-    }, 1000)
+    }, INTERVALS.INITIAL_SYNC_REQUEST)
   }
 
   /**
-   * Handle Yjs document updates
-   *
-   * @param {Uint8Array} update
-   * @param {any} origin
+   * Handle Yjs document updates.
+   * @private
+   * @param {Uint8Array} update - The document update
+   * @param {any} origin - Origin of the update
    */
   _handleDocUpdate (update, origin) {
-    // Don't broadcast updates that came from the network
     if (origin === this) {
       return
     }
 
-    console.log('Broadcasting Yjs update to peers')
-    // Broadcast the update to all peers via pubsub
     this._publishMessage({
       type: 'update',
       update: toString(update, 'base64')
+    }).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('Failed to broadcast update:', err)
     })
   }
 
   /**
-   * Handle incoming pubsub messages
-   *
-   * @param {any} evt
+   * Handle incoming pubsub messages.
+   * @private
+   * @param {CustomEvent} evt - Pubsub message event
    */
   _handlePubsubMessage (evt) {
-    // Ignore our own messages
-    if (evt.detail.topic !== this.topic) {
+    if (evt.detail.topic !== this.topic || this.libp2p.peerId.equals(evt.detail.from)) {
       return
     }
-    if (this.libp2p.peerId.equals(evt.detail.from)) {
-      return
-    }
-
-    console.log(`Received pubsub message from ${evt.detail.from.toString()}, type: ${evt.detail.topic}`)
 
     try {
       const message = JSON.parse(toString(evt.detail.data, 'utf8'))
-      console.log(`Message type: ${message.type}`)
+
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log(`Received ${message.type} from ${evt.detail.from.toString()}`)
+      }
 
       switch (message.type) {
-        case 'update':
-          this._applyUpdate(message.update)
-          break
-        case 'sync-request':
-          this._handleSyncRequest(message.stateVector)
-          break
-        case 'sync-response':
-          this._handleSyncResponse(message.update)
-          break
+      case 'update':
+        this._applyUpdate(message.update)
+        break
+      case 'sync-request':
+        this._handleSyncRequest(message.stateVector)
+        break
+      case 'sync-response':
+        this._handleSyncResponse(message.update)
+        break
+      default:
+        if (DEBUG) {
+          // eslint-disable-next-line no-console
+          console.warn(`Unknown message type: ${message.type}`)
+        }
       }
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error('Failed to process pubsub message:', err)
     }
   }
 
   /**
-   * Apply an update to the document
-   *
-   * @param {string} updateBase64
+   * Apply an update to the document.
+   * @private
+   * @param {string} updateBase64 - Base64-encoded Yjs update
    */
   _applyUpdate (updateBase64) {
-    console.log('Applying Yjs update from network')
     const update = fromString(updateBase64, 'base64')
     Y.applyUpdate(this.doc, update, this)
 
     if (!this.synced) {
       this.synced = true
-      console.log('Document synced with network')
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log('Document synced with network')
+      }
     }
   }
 
   /**
-   * Handle sync request from a peer
-   *
-   * @param {string} stateVectorBase64
+   * Handle sync request from a peer.
+   * @private
+   * @param {string} stateVectorBase64 - Base64-encoded state vector
    */
   _handleSyncRequest (stateVectorBase64) {
     const stateVector = fromString(stateVectorBase64, 'base64')
@@ -231,54 +264,65 @@ export class Libp2pProvider {
     this._publishMessage({
       type: 'sync-response',
       update: toString(update, 'base64')
+    }).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('Failed to send sync response:', err)
     })
   }
 
   /**
-   * Handle sync response from a peer
-   *
-   * @param {string} updateBase64
+   * Handle sync response from a peer.
+   * @private
+   * @param {string} updateBase64 - Base64-encoded Yjs update
    */
   _handleSyncResponse (updateBase64) {
     this._applyUpdate(updateBase64)
   }
 
   /**
-   * Publish a message to the pubsub topic
-   *
-   * @param {object} message
+   * Publish a message to the pubsub topic.
+   * @private
+   * @param {object} message - Message object to publish
+   * @param {string} message.type - Message type (update, sync-request, sync-response)
+   * @returns {Promise<void>}
    */
   async _publishMessage (message) {
     try {
       const data = fromString(JSON.stringify(message), 'utf8')
 
-      // Check peers subscribed to this topic
-      const subscribers = this.libp2p.services.pubsub.getSubscribers(this.topic)
-      console.log(`Publishing message type: ${message.type} to topic: ${this.topic}`)
-      console.log(`Subscribers to ${this.topic}:`, subscribers.map(p => p.toString()))
-      console.log('Total connected peers:', this.libp2p.getConnections().length)
+      if (DEBUG) {
+        const subscribers = this.libp2p.services.pubsub.getSubscribers(this.topic)
+        // eslint-disable-next-line no-console
+        console.log(`Publishing ${message.type} to ${this.topic} (${subscribers.length} subscribers)`)
+      }
 
-      const result = await this.libp2p.services.pubsub.publish(this.topic, data)
-      console.log('Message published successfully', result)
+      await this.libp2p.services.pubsub.publish(this.topic, data)
     } catch (err) {
+      // eslint-disable-next-line no-console
       console.error('Failed to publish message:', err)
+      throw err
     }
   }
 
   /**
-   * Destroy the provider and clean up resources
+   * Destroy the provider and clean up resources.
+   * @returns {Promise<void>}
    */
-  destroy () {
-    this.doc.off('update', this._onUpdate)
-    this.libp2p.services.pubsub.removeEventListener('message', this._onPubsubMessage)
-    this.libp2p.removeEventListener('peer:discovery', this._onPeerDiscovered)
+  async destroy () {
+    try {
+      this.doc.off('update', this._onUpdate)
+      this.libp2p.services.pubsub.removeEventListener('message', this._onPubsubMessage)
+      this.libp2p.removeEventListener('peer:discovery', this._onPeerDiscovered)
 
-    // Unsubscribe from topic
-    this.libp2p.services.pubsub.unsubscribe(this.topic).catch(err => {
-      console.error('Failed to unsubscribe from topic:', err)
-    })
+      await this.libp2p.services.pubsub.unsubscribe(this.topic)
 
-    this.connected = false
-    this.synced = false
+      this.connected = false
+      this.synced = false
+      this.connectedPeers.clear()
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Error during provider cleanup:', err)
+      throw err
+    }
   }
 }

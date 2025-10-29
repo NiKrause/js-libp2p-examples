@@ -76,6 +76,21 @@ npm start
 6. Open another browser tab/window, connect to the same relay and topic
 7. Changes will sync automatically between all connected peers
 
+### Debug Mode
+
+To enable verbose logging:
+
+**Relay server:**
+```bash
+npm run relay:debug
+```
+
+**Browser client:**
+Add `?debug=true` to the URL:
+```
+http://localhost:5173/?debug=true
+```
+
 ## How It Works
 
 ### Libp2p Configuration

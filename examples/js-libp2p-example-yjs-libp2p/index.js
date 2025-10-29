@@ -1,5 +1,3 @@
-/* eslint-disable no-console */
-
 import { gossipsub } from '@chainsafe/libp2p-gossipsub'
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
@@ -7,14 +5,14 @@ import { autoNAT } from '@libp2p/autonat'
 import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
 import { dcutr } from '@libp2p/dcutr'
 import { identify, identifyPush } from '@libp2p/identify'
-import { ping } from '@libp2p/ping'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
-import { webRTC, webRTCDirect } from '@libp2p/webrtc'
+import { webRTC } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
 import * as filters from '@libp2p/websockets/filters'
 import { multiaddr } from '@multiformats/multiaddr'
 import { createLibp2p } from 'libp2p'
 import * as Y from 'yjs'
+import { DEBUG, TIMEOUTS, INTERVALS, PUBSUB_DISCOVERY } from './constants.js'
 import { Libp2pProvider } from './yjs-libp2p-provider.js'
 
 // UI elements
@@ -32,14 +30,29 @@ let yjsDoc
 let provider
 let text
 
-// Logging
-const log = (message) => {
-  console.log(message)
+/**
+ * Logs a message to both console and UI.
+ * @param {string} message - Message to log
+ * @param {boolean} [isError=false] - Whether this is an error message
+ */
+const log = (message, isError = false) => {
+  if (DEBUG) {
+    // eslint-disable-next-line no-console
+    console.log(message)
+  }
   logEl.textContent += message + '\n'
   logEl.scrollTop = logEl.scrollHeight
+
+  if (isError) {
+    logEl.style.color = '#d32f2f'
+  } else {
+    logEl.style.color = 'inherit'
+  }
 }
 
-// Update peer display
+/**
+ * Updates the peer display UI with current connections.
+ */
 const updatePeerDisplay = () => {
   if (!libp2pNode) {
     return
@@ -55,28 +68,17 @@ const updatePeerDisplay = () => {
       peerMap.set(peerId, [])
     }
 
-    // Get transport from connection and remote address
     const remoteAddr = conn.remoteAddr.toString()
     let transport = 'unknown'
 
-    // Check for circuit relay (p2p-circuit in address)
     if (remoteAddr.includes('/p2p-circuit')) {
       transport = 'relay'
     } else if (remoteAddr.includes('/webrtc')) {
-      // Check for WebRTC
       transport = 'webrtc'
-    } else if (remoteAddr.includes('/webtransport')) {
-      // Check for WebTransport
-      transport = 'webtransport'
     } else if (remoteAddr.includes('/wss') || remoteAddr.includes('/tls/ws')) {
-      // Check for WebSocket Secure
       transport = 'websocket-secure'
     } else if (remoteAddr.includes('/ws')) {
-      // Check for WebSocket
       transport = 'websocket'
-    } else if (remoteAddr.includes('/tcp')) {
-      // If it has TCP but also has /ws, it's websocket over TCP
-      transport = 'tcp'
     }
 
     peerMap.get(peerId).push({ transport, addr: remoteAddr })
@@ -120,6 +122,20 @@ const updatePeerDisplay = () => {
   }
 }
 
+/**
+ * Validates a multiaddr string format.
+ * @param {string} addr - Multiaddr to validate
+ * @returns {boolean}
+ */
+const isValidMultiaddr = (addr) => {
+  try {
+    multiaddr(addr)
+    return true
+  } catch {
+    return false
+  }
+}
+
 // Connect button handler
 connectBtn.onclick = async () => {
   if (libp2pNode) {
@@ -129,13 +145,18 @@ connectBtn.onclick = async () => {
 
   const relayAddr = relayInput.value.trim()
   if (!relayAddr) {
-    log('Please enter a relay multiaddr')
+    log('Please enter a relay multiaddr', true)
+    return
+  }
+
+  if (!isValidMultiaddr(relayAddr)) {
+    log('Invalid multiaddr format', true)
     return
   }
 
   const topic = topicInput.value.trim()
   if (!topic) {
-    log('Please enter a topic')
+    log('Please enter a topic', true)
     return
   }
 
@@ -146,17 +167,10 @@ connectBtn.onclick = async () => {
     // Create libp2p node with WebRTC, relay, and pubsub
     libp2pNode = await createLibp2p({
       addresses: {
-        listen: [
-          '/p2p-circuit',
-          '/webrtc',
-          '/wss',
-          '/ws'
-        ]
+        listen: ['/p2p-circuit', '/webrtc']
       },
       transports: [
-        webSockets({
-          filter: filters.all
-        }),
+        webSockets({ filter: filters.all }),
         webRTC({
           rtcConfiguration: {
             iceServers: [
@@ -165,31 +179,29 @@ connectBtn.onclick = async () => {
             ]
           }
         }),
-        webRTCDirect(),
         circuitRelayTransport({
-          reservationCompletionTimeout: 20000
+          reservationCompletionTimeout: TIMEOUTS.RELAY_CONNECTION
         })
       ],
       connectionEncrypters: [noise()],
       streamMuxers: [yamux()],
       connectionManager: {
-        inboundStreamProtocolNegotiationTimeout: 10000,
-        inboundUpgradeTimeout: 10000,
-        outboundStreamProtocolNegotiationTimeout: 10000,
-        outboundUpgradeTimeout: 10000
+        inboundStreamProtocolNegotiationTimeout: TIMEOUTS.PROTOCOL_NEGOTIATION_INBOUND,
+        inboundUpgradeTimeout: TIMEOUTS.UPGRADE_INBOUND,
+        outboundStreamProtocolNegotiationTimeout: TIMEOUTS.PROTOCOL_NEGOTIATION_OUTBOUND,
+        outboundUpgradeTimeout: TIMEOUTS.UPGRADE_OUTBOUND
       },
       connectionGater: {
         denyDialMultiaddr: () => false
       },
       peerDiscovery: [
         pubsubPeerDiscovery({
-          interval: 10000,
-          topics: ['_peer-discovery._p2p._pubsub'],
+          interval: INTERVALS.PUBSUB_PEER_DISCOVERY,
+          topics: PUBSUB_DISCOVERY.TOPICS,
           listenOnly: false
         })
       ],
       services: {
-        ping: ping(),
         identify: identify(),
         identifyPush: identifyPush(),
         autoNAT: autoNAT(),
@@ -197,24 +209,27 @@ connectBtn.onclick = async () => {
         pubsub: gossipsub({
           emitSelf: false,
           allowPublishToZeroTopicPeers: true,
-          // Speed up gossipsub mesh formation
-          heartbeatInterval: 1000, // Send heartbeat every 1 second (default is 1000ms)
+          heartbeatInterval: INTERVALS.GOSSIPSUB_HEARTBEAT,
           directPeers: [],
-          floodPublish: true // Broadcast to all peers, not just mesh
+          floodPublish: true
         })
       }
     })
 
-    log(`libp2p node created with id: ${libp2pNode.peerId}`)
+    log(`libp2p node created with id: ${libp2pNode.peerId.toString().slice(0, 12)}...`)
 
     // Expose for testing
     window.libp2pNode = libp2pNode
 
     // Connect to relay
     log('Connecting to relay...')
-    const ma = multiaddr(relayAddr)
-    await libp2pNode.dial(ma)
-    log('Connected to relay!')
+    try {
+      const ma = multiaddr(relayAddr)
+      await libp2pNode.dial(ma)
+      log('Connected to relay!')
+    } catch (err) {
+      throw new Error(`Failed to connect to relay: ${err.message}`)
+    }
 
     // Create Yjs document
     yjsDoc = new Y.Doc()
@@ -252,29 +267,52 @@ connectBtn.onclick = async () => {
     // Initial peer display update
     updatePeerDisplay()
 
-    // Log connection events and update peer display
+    // Update peer display on connection events
     libp2pNode.addEventListener('peer:connect', (evt) => {
-      log(`Connected to peer: ${evt.detail}`)
       updatePeerDisplay()
+      if (DEBUG) {
+        log(`Connected to peer: ${evt.detail.toString().slice(0, 12)}...`)
+      }
     })
 
     libp2pNode.addEventListener('peer:disconnect', (evt) => {
-      log(`Disconnected from peer: ${evt.detail}`)
       updatePeerDisplay()
+      if (DEBUG) {
+        log(`Disconnected from peer: ${evt.detail.toString().slice(0, 12)}...`)
+      }
     })
   } catch (err) {
-    log(`Error: ${err.message}`)
-    console.error(err)
+    log(`Error: ${err.message}`, true)
+    // eslint-disable-next-line no-console
+    console.error('Connection error:', err)
     connectBtn.disabled = false
+
+    // Clean up on error
+    if (libp2pNode) {
+      try {
+        await libp2pNode.stop()
+      } catch (stopErr) {
+        // eslint-disable-next-line no-console
+        console.error('Error stopping libp2p:', stopErr)
+      }
+      libp2pNode = null
+    }
   }
 }
 
-// Cleanup on page unload
-window.addEventListener('beforeunload', () => {
-  if (provider) {
-    provider.destroy()
-  }
-  if (libp2pNode) {
-    libp2pNode.stop()
+/**
+ * Cleanup resources on page unload.
+ */
+window.addEventListener('beforeunload', async () => {
+  try {
+    if (provider) {
+      await provider.destroy()
+    }
+    if (libp2pNode) {
+      await libp2pNode.stop()
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('Cleanup error:', err)
   }
 })
