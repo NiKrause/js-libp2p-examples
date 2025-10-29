@@ -48,6 +48,8 @@ jobs:
         run: npm install
       - name: Install Playwright
         run: npx -y playwright install --with-deps
+      - name: Build project
+        run: npm run build
       - name: Run tests
         run: npm run test
         env:
