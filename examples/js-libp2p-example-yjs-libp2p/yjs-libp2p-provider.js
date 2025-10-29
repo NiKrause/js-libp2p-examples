@@ -57,6 +57,7 @@ export class Libp2pProvider {
 
   /**
    * Subscribe to the pubsub topic for this document.
+   *
    * @private
    * @returns {Promise<void>}
    */
@@ -93,6 +94,7 @@ export class Libp2pProvider {
 
   /**
    * Set up peer discovery to connect to discovered peers.
+   *
    * @private
    */
   _setupPeerDiscovery () {
@@ -119,6 +121,7 @@ export class Libp2pProvider {
 
   /**
    * Handle peer discovery events.
+   *
    * @private
    * @param {CustomEvent} evt - Peer discovery event
    * @returns {Promise<void>}
@@ -156,6 +159,7 @@ export class Libp2pProvider {
 
   /**
    * Request initial document state from connected peers.
+   *
    * @private
    * @returns {Promise<void>}
    */
@@ -176,6 +180,7 @@ export class Libp2pProvider {
 
   /**
    * Handle Yjs document updates.
+   *
    * @private
    * @param {Uint8Array} update - The document update
    * @param {any} origin - Origin of the update
@@ -196,6 +201,7 @@ export class Libp2pProvider {
 
   /**
    * Handle incoming pubsub messages.
+   *
    * @private
    * @param {CustomEvent} evt - Pubsub message event
    */
@@ -213,20 +219,20 @@ export class Libp2pProvider {
       }
 
       switch (message.type) {
-      case 'update':
-        this._applyUpdate(message.update)
-        break
-      case 'sync-request':
-        this._handleSyncRequest(message.stateVector)
-        break
-      case 'sync-response':
-        this._handleSyncResponse(message.update)
-        break
-      default:
-        if (DEBUG) {
-          // eslint-disable-next-line no-console
-          console.warn(`Unknown message type: ${message.type}`)
-        }
+        case 'update':
+          this._applyUpdate(message.update)
+          break
+        case 'sync-request':
+          this._handleSyncRequest(message.stateVector)
+          break
+        case 'sync-response':
+          this._handleSyncResponse(message.update)
+          break
+        default:
+          if (DEBUG) {
+            // eslint-disable-next-line no-console
+            console.warn(`Unknown message type: ${message.type}`)
+          }
       }
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -236,6 +242,7 @@ export class Libp2pProvider {
 
   /**
    * Apply an update to the document.
+   *
    * @private
    * @param {string} updateBase64 - Base64-encoded Yjs update
    */
@@ -254,6 +261,7 @@ export class Libp2pProvider {
 
   /**
    * Handle sync request from a peer.
+   *
    * @private
    * @param {string} stateVectorBase64 - Base64-encoded state vector
    */
@@ -272,6 +280,7 @@ export class Libp2pProvider {
 
   /**
    * Handle sync response from a peer.
+   *
    * @private
    * @param {string} updateBase64 - Base64-encoded Yjs update
    */
@@ -281,6 +290,7 @@ export class Libp2pProvider {
 
   /**
    * Publish a message to the pubsub topic.
+   *
    * @private
    * @param {object} message - Message object to publish
    * @param {string} message.type - Message type (update, sync-request, sync-response)
@@ -306,6 +316,7 @@ export class Libp2pProvider {
 
   /**
    * Destroy the provider and clean up resources.
+   *
    * @returns {Promise<void>}
    */
   async destroy () {

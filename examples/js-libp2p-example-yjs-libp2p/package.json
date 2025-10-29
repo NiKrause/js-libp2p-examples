@@ -8,8 +8,6 @@
     "build": "vite build",
     "relay": "node relay.js",
     "relay:debug": "DEBUG=true node relay.js",
-    "lint": "eslint *.js",
-    "lint:fix": "eslint --fix *.js",
     "test:firefox": "playwright test --project=firefox",
     "test:chrome": "playwright test --project=chromium",
     "test": "playwright test"
@@ -35,10 +33,7 @@
     "yjs": "^13.6.18"
   },
   "devDependencies": {
-    "@eslint/js": "^9.0.0",
     "@playwright/test": "^1.56.1",
-    "eslint": "^9.0.0",
-    "globals": "^15.0.0",
     "test-ipfs-example": "^1.0.0"
   }
 }

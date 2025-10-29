@@ -32,8 +32,9 @@ let text
 
 /**
  * Logs a message to both console and UI.
+ *
  * @param {string} message - Message to log
- * @param {boolean} [isError=false] - Whether this is an error message
+ * @param {boolean} [isError] - Whether this is an error message
  */
 const log = (message, isError = false) => {
   if (DEBUG) {
@@ -124,6 +125,7 @@ const updatePeerDisplay = () => {
 
 /**
  * Validates a multiaddr string format.
+ *
  * @param {string} addr - Multiaddr to validate
  * @returns {boolean}
  */
