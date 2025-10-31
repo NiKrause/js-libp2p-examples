@@ -13,7 +13,6 @@ import { identify, identifyPush } from '@libp2p/identify'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
-import { multiaddr } from '@multiformats/multiaddr'
 import { createLibp2p } from 'libp2p'
 import * as Y from 'yjs'
 import bootstrappers from './bootstrappers.js'
@@ -177,7 +176,6 @@ const updatePeerDisplay = () => {
   }
 }
 
-
 // Connect button handler
 connectBtn.onclick = async () => {
   if (libp2pNode) {
@@ -309,7 +307,7 @@ connectBtn.onclick = async () => {
     createSpreadsheetGrid()
 
     // Watch for cell changes
-      spreadsheetEngine.onChange(updateCellDisplay);
+    spreadsheetEngine.onChange(updateCellDisplay)
 
     // Show spreadsheet UI
     spreadsheetContainer.style.display = 'block'
@@ -439,6 +437,7 @@ function createSpreadsheetGrid () {
       })
 
       // Input handler - update cell value
+      // eslint-disable-next-line no-loop-func
       input.addEventListener('blur', () => {
         const value = input.value.trim()
         if (value === '') {

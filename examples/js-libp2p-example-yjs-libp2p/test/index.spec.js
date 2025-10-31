@@ -77,7 +77,7 @@ test.describe('Collaborative Spreadsheet - Yjs + libp2p', () => {
       () => document.querySelector('#peer-count')?.textContent === '2',
       { timeout: 35000 }
     )
-    
+
     // Give Yjs extra time to fully sync
     await page1.waitForTimeout(2000)
 
@@ -146,7 +146,7 @@ test.describe('Collaborative Spreadsheet - Yjs + libp2p', () => {
       () => document.querySelector('#peer-count')?.textContent === '2',
       { timeout: 35000 }
     )
-    
+
     // Give Yjs extra time to fully sync
     await page1.waitForTimeout(2000)
 
