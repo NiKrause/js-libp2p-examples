@@ -3,11 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Yjs + libp2p Example</title>
+    <title>Collaborative Spreadsheet - Yjs + libp2p</title>
     <style>
       body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 2rem; }
       #status { margin-bottom: 1rem; }
-      textarea { width: 100%; height: 300px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
       .row { display: flex; gap: 1rem; margin-bottom: 1rem; }
       .row > * { flex: 1; }
       #peers { background: #f5f5f5; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
@@ -15,22 +14,59 @@
       .peer { margin: 0.5rem 0; padding: 0.5rem; background: white; border-radius: 4px; }
       .peer-id { font-family: ui-monospace, monospace; font-size: 0.9em; }
       .transport { display: inline-block; background: #e0e0e0; padding: 0.2rem 0.5rem; border-radius: 3px; margin: 0.2rem; font-size: 0.85em; }
+      
+      /* Spreadsheet styles */
+      #spreadsheet-container { margin-top: 1rem; overflow: auto; max-height: 600px; border: 1px solid #ddd; }
+      #spreadsheet { border-collapse: collapse; background: white; }
+      #spreadsheet th { background: #f5f5f5; padding: 0.5rem; border: 1px solid #ddd; font-weight: 600; min-width: 40px; text-align: center; }
+      #spreadsheet td { border: 1px solid #ddd; padding: 0; position: relative; }
+      #spreadsheet input { border: none; padding: 0.5rem; width: 100%; box-sizing: border-box; font-family: inherit; }
+      #spreadsheet input:focus { outline: 2px solid #1976d2; outline-offset: -2px; }
+      #spreadsheet td.selected { background: #e3f2fd; }
+      #spreadsheet td.error input { color: #d32f2f; }
+      #formula-bar { margin-bottom: 0.5rem; display: flex; gap: 0.5rem; align-items: center; }
+      #formula-bar label { font-weight: 600; }
+      #formula-input { flex: 1; padding: 0.5rem; border: 1px solid #ddd; font-family: ui-monospace, monospace; }
+      #formula-input:disabled { background: #f5f5f5; }
+      .examples { margin-top: 1rem; padding: 1rem; background: #f9f9f9; border-radius: 4px; }
+      .examples h3 { margin-top: 0; }
+      .examples code { background: white; padding: 0.2rem 0.4rem; border-radius: 3px; }
     </style>
   </head>
   <body>
-    <h1>Yjs + libp2p</h1>
+    <h1>Collaborative Spreadsheet</h1>
+    <p>P2P Spreadsheet with formulas powered by Yjs + libp2p</p>
+    
     <div id="status">
       <label>Relay multiaddr: <input id="relay" placeholder="/ip4/127.0.0.1/tcp/PORT/ws/p2p/RELAY_PEER_ID" size="80" /></label>
-      <label>Topic: <input id="topic" value="yjs-doc-1" /></label>
+      <label>Topic: <input id="topic" value="spreadsheet-1" /></label>
       <button id="connect">Connect</button>
     </div>
+    
     <div id="peers" style="display: none;">
       <h3>Connected Peers (<span id="peer-count">0</span>)</h3>
       <div id="peer-list"></div>
     </div>
-    <div class="row">
-      <textarea id="editor" placeholder="Start typing..." disabled></textarea>
+    
+    <div id="formula-bar" style="display: none;">
+      <label id="cell-ref">A1:</label>
+      <input id="formula-input" type="text" placeholder="Enter value or formula (e.g., =A1+B1)" disabled />
     </div>
+    
+    <div id="spreadsheet-container" style="display: none;">
+      <table id="spreadsheet"></table>
+    </div>
+    
+    <div class="examples" style="display: none;" id="examples">
+      <h3>Formula Examples</h3>
+      <ul>
+        <li><code>=A1+B1</code> - Add two cells</li>
+        <li><code>=A1*2</code> - Multiply by constant</li>
+        <li><code>=SUM(A1:A10)</code> - Sum a range</li>
+        <li><code>=(A1+B1)/2</code> - Average of two cells</li>
+      </ul>
+    </div>
+    
     <pre id="log"></pre>
     <script type="module" src="./index.js"></script>
   </body>

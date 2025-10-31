@@ -135,6 +135,31 @@ if (DEBUG) {
   })
 }
 
+// Track subscribed topics
+const subscribedTopics = new Set()
+
+// Auto-subscribe to client topics to relay messages
+// Note: This is needed until browsers establish direct WebRTC connections
+// Production: Use a message queue or dedicated signaling server instead
+server.services.pubsub.addEventListener('subscription-change', async (evt) => {
+  for (const sub of (evt.detail.subscriptions || [])) {
+    if (!sub?.topic || subscribedTopics.has(sub.topic)) continue
+    
+    // Subscribe to data topics (but not discovery topics)
+    if (!sub.topic.startsWith('_peer-discovery') && !sub.topic.startsWith('_')) {
+      subscribedTopics.add(sub.topic)
+      try {
+        await server.services.pubsub.subscribe(sub.topic)
+        // eslint-disable-next-line no-console
+        console.log(`📡 Relay forwarding: ${sub.topic}`)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to subscribe:', err)
+      }
+    }
+  }
+})
+
 // Subscribe to topics dynamically as we see them
 const subscribedTopics = new Set()
 

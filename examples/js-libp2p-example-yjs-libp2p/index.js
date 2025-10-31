@@ -14,21 +14,29 @@ import { createLibp2p } from 'libp2p'
 import * as Y from 'yjs'
 import { DEBUG, TIMEOUTS, INTERVALS, PUBSUB_DISCOVERY } from './constants.js'
 import { Libp2pProvider } from './yjs-libp2p-provider.js'
+import { SpreadsheetEngine, coordToA1, a1ToCoord } from './spreadsheet-engine.js'
 
 // UI elements
 const relayInput = document.getElementById('relay')
 const topicInput = document.getElementById('topic')
 const connectBtn = document.getElementById('connect')
-const editor = document.getElementById('editor')
 const logEl = document.getElementById('log')
 const peersEl = document.getElementById('peers')
 const peerCountEl = document.getElementById('peer-count')
 const peerListEl = document.getElementById('peer-list')
+const spreadsheetEl = document.getElementById('spreadsheet')
+const formulaInput = document.getElementById('formula-input')
+const cellRefEl = document.getElementById('cell-ref')
+const formulaBar = document.getElementById('formula-bar')
+const spreadsheetContainer = document.getElementById('spreadsheet-container')
+const examplesEl = document.getElementById('examples')
 
 let libp2pNode
 let yjsDoc
 let provider
-let text
+let spreadsheetEngine
+let currentCell = null
+let gridSize = { rows: 10, cols: 8 } // Start with 10x8 grid
 
 /**
  * Logs a message to both console and UI.
@@ -233,38 +241,29 @@ connectBtn.onclick = async () => {
       throw new Error(`Failed to connect to relay: ${err.message}`)
     }
 
-    // Create Yjs document
+    // Create Yjs document and spreadsheet engine
     yjsDoc = new Y.Doc()
-    text = yjsDoc.getText('content')
+    spreadsheetEngine = new SpreadsheetEngine(yjsDoc)
 
     // Set up Yjs provider with libp2p
     log(`Setting up Yjs provider with topic: ${topic}`)
     provider = new Libp2pProvider(topic, yjsDoc, libp2pNode)
 
-    // Bind editor to Yjs text
-    text.observe(() => {
-      const currentText = text.toString()
-      if (editor.value !== currentText) {
-        const cursorPos = editor.selectionStart
-        editor.value = currentText
-        editor.setSelectionRange(cursorPos, cursorPos)
-      }
+    // Create spreadsheet grid
+    createSpreadsheetGrid()
+    
+    // Watch for cell changes
+    spreadsheetEngine.onChange((coord) => {
+      updateCellDisplay(coord)
     })
 
-    editor.oninput = () => {
-      const newText = editor.value
-      const currentText = text.toString()
-
-      if (newText !== currentText) {
-        yjsDoc.transact(() => {
-          text.delete(0, currentText.length)
-          text.insert(0, newText)
-        })
-      }
-    }
-
-    editor.disabled = false
-    log('Ready! Open this page in another browser tab or window to see collaborative editing.')
+    // Show spreadsheet UI
+    spreadsheetContainer.style.display = 'block'
+    formulaBar.style.display = 'flex'
+    examplesEl.style.display = 'block'
+    formulaInput.disabled = false
+    
+    log('Ready! Open this page in another browser tab or window to collaborate.')
 
     // Initial peer display update
     updatePeerDisplay()
@@ -300,6 +299,169 @@ connectBtn.onclick = async () => {
       libp2pNode = null
     }
   }
+}
+
+/**
+ * Create the spreadsheet grid UI
+ */
+function createSpreadsheetGrid() {
+  // Create header row with column letters
+  const headerRow = document.createElement('tr')
+  headerRow.appendChild(document.createElement('th')) // Corner cell
+  
+  for (let col = 0; col < gridSize.cols; col++) {
+    const th = document.createElement('th')
+    th.textContent = colToLetter(col)
+    headerRow.appendChild(th)
+  }
+  spreadsheetEl.appendChild(headerRow)
+  
+  // Create data rows
+  for (let row = 0; row < gridSize.rows; row++) {
+    const tr = document.createElement('tr')
+    
+    // Row header
+    const rowHeader = document.createElement('th')
+    rowHeader.textContent = row + 1
+    tr.appendChild(rowHeader)
+    
+    // Data cells
+    for (let col = 0; col < gridSize.cols; col++) {
+      const td = document.createElement('td')
+      const input = document.createElement('input')
+      const coord = coordToA1(row, col)
+      
+      input.id = `cell-${coord}`
+      input.dataset.coord = coord
+      input.type = 'text'
+      
+      // Focus handler - select cell
+      input.addEventListener('focus', () => {
+        selectCell(coord)
+      })
+      
+      // Input handler - update cell value
+      input.addEventListener('blur', () => {
+        const value = input.value.trim()
+        if (value === '') {
+          spreadsheetEngine.clearCell(coord)
+        } else {
+          spreadsheetEngine.setCell(coord, value)
+        }
+      })
+      
+      // Enter key - move to next row
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          const value = input.value.trim()
+          if (value === '') {
+            spreadsheetEngine.clearCell(coord)
+          } else {
+            spreadsheetEngine.setCell(coord, value)
+          }
+          
+          // Move to cell below
+          const { row: r, col: c } = a1ToCoord(coord)
+          if (r < gridSize.rows - 1) {
+            const nextCoord = coordToA1(r + 1, c)
+            document.getElementById(`cell-${nextCoord}`).focus()
+          }
+        }
+      })
+      
+      td.appendChild(input)
+      tr.appendChild(td)
+    }
+    
+    spreadsheetEl.appendChild(tr)
+  }
+  
+  // Select first cell by default
+  selectCell('A1')
+}
+
+/**
+ * Convert column index to letter
+ */
+function colToLetter(col) {
+  let letter = ''
+  while (col >= 0) {
+    letter = String.fromCharCode(65 + (col % 26)) + letter
+    col = Math.floor(col / 26) - 1
+  }
+  return letter
+}
+
+/**
+ * Select a cell and update formula bar
+ */
+function selectCell(coord) {
+  // Remove previous selection
+  if (currentCell) {
+    const prevTd = document.getElementById(`cell-${currentCell}`)?.parentElement
+    if (prevTd) prevTd.classList.remove('selected')
+  }
+  
+  currentCell = coord
+  
+  // Add selection to new cell
+  const td = document.getElementById(`cell-${coord}`)?.parentElement
+  if (td) td.classList.add('selected')
+  
+  // Update formula bar
+  cellRefEl.textContent = coord + ':'
+  const cell = spreadsheetEngine.getCell(coord)
+  formulaInput.value = cell.formula || cell.value
+}
+
+/**
+ * Update cell display when value changes
+ */
+function updateCellDisplay(coord) {
+  const input = document.getElementById(`cell-${coord}`)
+  if (!input) return
+  
+  const cell = spreadsheetEngine.getCell(coord)
+  const td = input.parentElement
+  
+  // Only update if not currently focused
+  if (document.activeElement !== input) {
+    input.value = cell.value
+  }
+  
+  // Update error styling
+  if (cell.error || (typeof cell.value === 'string' && cell.value.startsWith('#'))) {
+    td.classList.add('error')
+  } else {
+    td.classList.remove('error')
+  }
+  
+  // Update formula bar if this is the selected cell
+  if (currentCell === coord) {
+    formulaInput.value = cell.formula || cell.value
+  }
+}
+
+// Formula bar input handler
+if (formulaInput) {
+  formulaInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && currentCell) {
+      e.preventDefault()
+      const value = formulaInput.value.trim()
+      const input = document.getElementById(`cell-${currentCell}`)
+      
+      if (value === '') {
+        spreadsheetEngine.clearCell(currentCell)
+        if (input) input.value = ''
+      } else {
+        spreadsheetEngine.setCell(currentCell, value)
+      }
+      
+      // Refocus the cell
+      if (input) input.focus()
+    }
+  })
 }
 
 /**
