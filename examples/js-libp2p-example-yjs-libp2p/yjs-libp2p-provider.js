@@ -121,6 +121,7 @@ export class Libp2pProvider {
 
   /**
    * Handle peer discovery events.
+   * Note: Manual dialing removed - libp2p's auto-dialer handles this automatically
    *
    * @private
    * @param {CustomEvent} evt - Peer discovery event
@@ -134,25 +135,14 @@ export class Libp2pProvider {
       return
     }
 
-    const connections = this.libp2p.getConnections(peer.id)
-    if (connections && connections.length > 0) {
-      if (DEBUG) {
+    if (DEBUG) {
+      const connections = this.libp2p.getConnections(peer.id)
+      if (connections && connections.length > 0) {
         // eslint-disable-next-line no-console
         console.log(`Already connected to peer: ${peerId}`)
-      }
-      return
-    }
-
-    try {
-      if (DEBUG) {
+      } else {
         // eslint-disable-next-line no-console
-        console.log(`Dialing peer: ${peerId}`)
-      }
-      await this.libp2p.dial(peer.id)
-    } catch (error) {
-      if (DEBUG) {
-        // eslint-disable-next-line no-console
-        console.warn(`Failed to dial peer ${peerId}:`, error.message)
+        console.log(`Discovered peer: ${peerId} (auto-dialer will connect)`)
       }
     }
   }

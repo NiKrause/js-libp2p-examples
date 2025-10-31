@@ -37,11 +37,6 @@ export const RELAY_CONFIG = {
   DIAL_TIMEOUT: 30000
 }
 
-// Pubsub discovery configuration
-export const PUBSUB_DISCOVERY = {
-  TOPICS: ['_peer-discovery._p2p._pubsub']
-}
-
 // Default values
 export const DEFAULTS = {
   TOPIC: 'yjs-doc-1'

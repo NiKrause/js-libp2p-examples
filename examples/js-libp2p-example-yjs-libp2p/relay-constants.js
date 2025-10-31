@@ -32,7 +32,7 @@ export const CONNECTION_CONFIG = {
 
 // Peer discovery configuration
 export const DISCOVERY_CONFIG = {
-  INTERVAL: 5000,
+  INTERVAL: 10000,
   TOPICS: ['_peer-discovery._p2p._pubsub']
 }
 

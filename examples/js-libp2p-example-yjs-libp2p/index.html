@@ -53,6 +53,20 @@
         border-radius: 3px;
         margin: 0.2rem;
         font-size: 0.85em;
+        color: white;
+        font-weight: 500;
+      }
+      .transport.relay {
+        background: #ff9800;
+      }
+      .transport.webrtc {
+        background: #4caf50;
+      }
+      .transport.websocket {
+        background: #2196f3;
+      }
+      .transport.websocket-secure {
+        background: #1565c0;
       }
 
       /* Spreadsheet styles */
@@ -128,6 +142,28 @@
         padding: 0.2rem 0.4rem;
         border-radius: 3px;
       }
+      #multiaddrs {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #f0f7ff;
+        border: 1px solid #90caf9;
+        border-radius: 4px;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85em;
+      }
+      #multiaddrs h3 {
+        margin-top: 0;
+        font-family: system-ui;
+      }
+      #multiaddrs ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      #multiaddrs li {
+        padding: 0.25rem 0;
+        word-break: break-all;
+      }
     </style>
   </head>
   <body>
@@ -135,13 +171,6 @@
     <p>P2P Spreadsheet with formulas powered by Yjs + libp2p</p>
 
     <div id="status">
-      <label
-        >Relay multiaddr:
-        <input
-          id="relay"
-          placeholder="/ip4/127.0.0.1/tcp/PORT/ws/p2p/RELAY_PEER_ID"
-          size="80"
-      /></label>
       <label>Topic: <input id="topic" value="spreadsheet-1" /></label>
       <button id="connect">Connect</button>
     </div>
@@ -173,6 +202,11 @@
         <li><code>=SUM(A1:A10)</code> - Sum a range</li>
         <li><code>=(A1+B1)/2</code> - Average of two cells</li>
       </ul>
+    </div>
+
+    <div id="multiaddrs" style="display: none">
+      <h3>My Multiaddresses</h3>
+      <ul id="multiaddr-list"></ul>
     </div>
 
     <pre id="log"></pre>
