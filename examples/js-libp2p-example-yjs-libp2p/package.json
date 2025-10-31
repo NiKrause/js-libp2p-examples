@@ -7,7 +7,7 @@
     "start": "vite",
     "build": "vite build",
     "relay": "node relay.js",
-    "relay:debug": "DEBUG=true node relay.js",
+    "relay:debug": "DEBUG=libp2p:* node relay.js",
     "test:firefox": "playwright test --project=firefox",
     "test:chrome": "playwright test --project=chromium",
     "test": "playwright test"
