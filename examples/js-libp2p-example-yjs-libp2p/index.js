@@ -50,7 +50,7 @@ let gridSize = { rows: 10, cols: 8 }; // Start with 10x8 grid
  */
 const log = (message, isError = false) => {
   if (DEBUG) {
-    // eslint-disable-next-line no-console
+     
     console.log(message);
   }
   logEl.textContent += message + "\n";
@@ -294,7 +294,7 @@ connectBtn.onclick = async () => {
     });
   } catch (err) {
     log(`Error: ${err.message}`, true);
-    // eslint-disable-next-line no-console
+     
     console.error("Connection error:", err);
     connectBtn.disabled = false;
 
@@ -303,7 +303,7 @@ connectBtn.onclick = async () => {
       try {
         await libp2pNode.stop();
       } catch (stopErr) {
-        // eslint-disable-next-line no-console
+         
         console.error("Error stopping libp2p:", stopErr);
       }
       libp2pNode = null;
@@ -491,7 +491,7 @@ window.addEventListener("beforeunload", async () => {
       await libp2pNode.stop();
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
+     
     console.error("Cleanup error:", err);
   }
 });

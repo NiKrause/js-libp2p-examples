@@ -209,15 +209,15 @@ export class SpreadsheetEngine {
       });
 
       // Evaluate the expression safely
-      // eslint-disable-next-line no-new-func
+       
       const result = Function(`"use strict"; return (${expr})`)();
 
       if (typeof result === "number" && isFinite(result)) {
         return result;
       }
-      return "#ERROR!";
-    } catch (err) {
-      return "#ERROR!";
+      return '#ERROR!';
+    } catch {
+      return '#ERROR!';
     }
   }
 
@@ -249,7 +249,7 @@ export class SpreadsheetEngine {
    */
   removeDependencies(coord) {
     // Remove this cell from all dependency lists
-    for (const [ref, dependents] of this.dependencyGraph.entries()) {
+    for (const [, dependents] of this.dependencyGraph.entries()) {
       dependents.delete(coord);
     }
   }

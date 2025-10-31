@@ -21,8 +21,7 @@ import {
   CONNECTION_CONFIG,
   DISCOVERY_CONFIG,
   MONITORING,
-  DEFAULT_TOPIC,
-} from "./relay-constants.js";
+} from './relay-constants.js'
 
 const server = await createLibp2p({
   addresses: {
@@ -100,12 +99,12 @@ server.addEventListener("peer:discovery", async (evt) => {
   try {
     await server.dial(peer.id);
     if (DEBUG) {
-      // eslint-disable-next-line no-console
+       
       console.log(`Dialed peer: ${peer.id.toString().slice(0, 12)}...`);
     }
   } catch (error) {
     if (DEBUG) {
-      // eslint-disable-next-line no-console
+       
       console.warn(`Failed to dial peer: ${error.message}`);
     }
   }
@@ -113,14 +112,14 @@ server.addEventListener("peer:discovery", async (evt) => {
 
 server.addEventListener("peer:connect", (evt) => {
   if (DEBUG) {
-    // eslint-disable-next-line no-console
+     
     console.log(`Peer connected: ${evt.detail.toString().slice(0, 12)}...`);
   }
 });
 
 server.addEventListener("peer:disconnect", (evt) => {
   if (DEBUG) {
-    // eslint-disable-next-line no-console
+     
     console.log(`Peer disconnected: ${evt.detail.toString().slice(0, 12)}...`);
   }
 });
@@ -131,12 +130,12 @@ if (DEBUG) {
     try {
       const msgStr = new TextDecoder().decode(evt.detail.data);
       const msg = JSON.parse(msgStr);
-      // eslint-disable-next-line no-console
+       
       console.log(
         `📨 ${msg.type} on ${evt.detail.topic} from ${evt.detail.from.toString().slice(0, 12)}...`,
       );
     } catch {
-      // eslint-disable-next-line no-console
+       
       console.log(
         `📨 Message on ${evt.detail.topic} (${evt.detail.data.length} bytes)`,
       );
@@ -162,10 +161,10 @@ server.services.pubsub.addEventListener("subscription-change", async (evt) => {
       subscribedTopics.add(sub.topic);
       try {
         await server.services.pubsub.subscribe(sub.topic);
-        // eslint-disable-next-line no-console
+         
         console.log(`📡 Relay forwarding: ${sub.topic}`);
       } catch (err) {
-        // eslint-disable-next-line no-console
+         
         console.error("Failed to subscribe:", err);
       }
     }
@@ -177,12 +176,12 @@ if (DEBUG) {
   setInterval(() => {
     const topics = server.services.pubsub.getTopics();
     if (topics.length > 0) {
-      // eslint-disable-next-line no-console
+       
       console.log("\n📋 Active topics:", topics);
       for (const topic of topics) {
         const subscribers = server.services.pubsub.getSubscribers(topic);
         if (subscribers.length > 0) {
-          // eslint-disable-next-line no-console
+           
           console.log(`  👥 ${topic}: ${subscribers.length} subscribers`);
         }
       }
@@ -190,22 +189,22 @@ if (DEBUG) {
   }, MONITORING.TOPIC_STATUS_INTERVAL);
 }
 
-// eslint-disable-next-line no-console
+ 
 console.info(
   "\nThe relay node is running and listening on the following multiaddrs:",
 );
-// eslint-disable-next-line no-console
+ 
 console.info("");
-// eslint-disable-next-line no-console
+ 
 console.info(
   server
     .getMultiaddrs()
     .map((ma) => ma.toString())
     .join("\n"),
 );
-// eslint-disable-next-line no-console
+ 
 console.info("");
-// eslint-disable-next-line no-console
+ 
 console.info(
   "Copy one of the above multiaddrs and use it in the browser client",
 );
