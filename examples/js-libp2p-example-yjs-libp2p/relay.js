@@ -160,46 +160,6 @@ server.services.pubsub.addEventListener('subscription-change', async (evt) => {
   }
 })
 
-// Subscribe to topics dynamically as we see them
-const subscribedTopics = new Set()
-
-server.services.pubsub.addEventListener('subscription-change', async (evt) => {
-  const subscriptions = evt.detail.subscriptions
-  if (!subscriptions || !Array.isArray(subscriptions)) {
-    return
-  }
-
-  for (const sub of subscriptions) {
-    if (!sub || !sub.topic) {
-      continue
-    }
-
-    const topic = sub.topic
-    const shouldSubscribe = (topic.startsWith('yjs-') || topic.startsWith('test-')) && !subscribedTopics.has(topic)
-    if (!shouldSubscribe) {
-      continue
-    }
-
-    subscribedTopics.add(topic)
-    try {
-      await server.services.pubsub.subscribe(topic)
-      if (DEBUG) {
-        // eslint-disable-next-line no-console
-        console.log(`📡 Auto-subscribed to: ${topic}`)
-      }
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to subscribe:', err)
-    }
-  }
-})
-
-// Subscribe to default Yjs topic
-await server.services.pubsub.subscribe(DEFAULT_TOPIC)
-subscribedTopics.add(DEFAULT_TOPIC)
-// eslint-disable-next-line no-console
-console.log(`📡 Relay subscribed to default topic: ${DEFAULT_TOPIC}`)
-
 // Periodically log active topics and subscribers in debug mode
 if (DEBUG) {
   setInterval(() => {
