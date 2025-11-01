@@ -21,12 +21,6 @@
   - [Message Types](#message-types)
   - [Peer Discovery Flow](#peer-discovery-flow)
 - [Key Features](#key-features)
-  - [🔗 Decentralized Architecture](#-decentralized-architecture)
-  - [🌐 NAT Traversal](#-nat-traversal)
-  - [🔄 Real-time Sync](#-real-time-sync)
-  - [📡 Efficient Messaging](#-efficient-messaging)
-  - [🔌 Relay Fallback](#-relay-fallback)
-  - [🤝 Auto-discovery](#-auto-discovery)
 - [Need help?](#need-help)
 - [License](#license)
 - [Contribution](#contribution)
@@ -155,32 +149,18 @@ The provider uses three message types:
 
 ### Peer Discovery Flow
 
-1. Client connects to relay server via WebSocket
-2. Client subscribes to the pubsub topic
+1. Client connects to relay server via WebRTC-Direct or WebSocket
+2. Client subscribes to the pubsub topic - one for peer discovery another one for document updates
 3. Relay forwards pubsub messages between peers
-4. When a peer subscribes to the same topic, both peers discover each other
-5. Peers attempt direct WebRTC connections (using DCUTR for NAT traversal)
-6. If direct connection fails, communication continues through the relay
+4. Peers attempt direct WebRTC connections (using DCUTR for NAT traversal)
 
 ## Key Features
 
-### 🔗 Decentralized Architecture
-No central server required - peers communicate directly when possible
-
-### 🌐 NAT Traversal
-Automatic hole punching via DCUTR for direct connections behind NATs
-
-### 🔄 Real-time Sync
-Changes propagate instantly to all connected peers
-
-### 📡 Efficient Messaging
-Uses Yjs's state-based CRDT for minimal bandwidth usage
-
-### 🔌 Relay Fallback
-Falls back to relay when direct connections aren't possible
-
-### 🤝 Auto-discovery
-Peers automatically discover and connect to each other
+- **WebRTC Direct**: Faster peer-to-peer connections with automatic NAT traversal via DCUTR
+- **WebSocket**: Reliable relay-based connections when direct connections aren't possible
+- **Direct Peer-to-Peer**: Real-time document sync directly between browsers via WebRTC
+- **Relay-based**: Falls back to relay server for coordination when direct connections fail
+- **Efficient Updates**: Uses Yjs's state-based CRDT for minimal bandwidth usage
 
 ## Need help?
 
