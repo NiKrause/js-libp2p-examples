@@ -5,8 +5,9 @@ import { yamux } from '@chainsafe/libp2p-yamux'
 import { autoNAT } from '@libp2p/autonat'
 import { bootstrap } from '@libp2p/bootstrap'
 import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
+import { dcutr } from '@libp2p/dcutr'
 import { gossipsub } from '@libp2p/gossipsub'
-import { identify } from '@libp2p/identify'
+import { identify, identifyPush } from '@libp2p/identify'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
@@ -24,7 +25,9 @@ import { Libp2pProvider } from './yjs-libp2p-provider.js'
 
 // UI elements
 const topicInput = document.getElementById('topic')
-const connectBtn = document.getElementById('connect')
+const connectWebRTCBtn = document.getElementById('connect-webrtc')
+const connectWebSocketBtn = document.getElementById('connect-websocket')
+const connectionModeEl = document.getElementById('connection-mode')
 const logEl = document.getElementById('log')
 const peersEl = document.getElementById('peers')
 const peerCountEl = document.getElementById('peer-count')
@@ -185,8 +188,8 @@ const updatePeerDisplay = () => {
   }
 }
 
-// Connect button handler
-connectBtn.onclick = async () => {
+// Connect function with bootstrap address selection
+async function connectWithTransports (mode = 'webrtc') {
   if (libp2pNode) {
     log('Already connected')
     return
@@ -199,36 +202,82 @@ connectBtn.onclick = async () => {
   }
 
   try {
-    connectBtn.disabled = true
+    connectWebRTCBtn.disabled = true
+    connectWebSocketBtn.disabled = true
+    
+    // Show connection mode
+    connectionModeEl.textContent = mode === 'webrtc' 
+      ? '🔄 Fetching relay WebRTC-Direct addresses...' 
+      : '🔄 Fetching relay WebSocket addresses...'
+    
+    // Fetch relay addresses dynamically
+    let bootstrapAddresses = []
+    try {
+      log('Fetching relay addresses from HTTP API...')
+      const response = await fetch('http://localhost:9094/api/addresses')
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+      const addresses = await response.json()
+      
+      if (mode === 'webrtc') {
+        bootstrapAddresses = addresses.webrtcDirect
+        log(`Found ${bootstrapAddresses.length} WebRTC-Direct address(es)`)
+      } else {
+        bootstrapAddresses = addresses.websocket
+        log(`Found ${bootstrapAddresses.length} WebSocket address(es)`)
+      }
+      
+      if (bootstrapAddresses.length === 0) {
+        throw new Error(`No ${mode} addresses available from relay`)
+      }
+      
+      // Log the addresses we'll use
+      bootstrapAddresses.forEach(addr => {
+        log(`  → ${addr}`)
+      })
+    } catch (err) {
+      log(`⚠️ Failed to fetch relay addresses: ${err.message}`, true)
+      // Fallback to hardcoded WebSocket addresses from bootstrappers.js
+      bootstrapAddresses = (await import('./bootstrappers.js')).default
+      log(`Using fallback addresses (${bootstrapAddresses.length} address(es))`)
+    }
+
+    connectionModeEl.textContent = mode === 'webrtc' 
+      ? '🔄 Connecting via WebRTC-Direct...' 
+      : '🔄 Connecting via WebSocket...'
     log('Creating libp2p node...')
 
-    // Create libp2p node with WebRTC, relay, and pubsub
+    // ALWAYS include ALL transports (never disable any)
+    const transports = [
+      webSockets(),
+      webRTCDirect({
+        rtcConfiguration: {
+          iceServers: [
+            { urls: ['stun:stun.l.google.com:19302'] },
+            { urls: ['stun:stun1.l.google.com:19302'] }
+          ]
+        }
+      }),
+      webRTC({
+        rtcConfiguration: {
+          iceServers: [
+            { urls: ['stun:stun.l.google.com:19302'] },
+            { urls: ['stun:stun1.l.google.com:19302'] }
+          ]
+        }
+      }),
+      circuitRelayTransport({
+        reservationCompletionTimeout: TIMEOUTS.RELAY_CONNECTION
+      })
+    ]
+    
+    // Create libp2p node with ALL transports always enabled
     libp2pNode = await createLibp2p({
       addresses: {
         listen: ['/p2p-circuit', '/webrtc']
       },
-      transports: [
-        webSockets(),
-        webRTCDirect({
-          rtcConfiguration: {
-            iceServers: [
-              { urls: ['stun:stun.l.google.com:19302'] },
-              { urls: ['stun:stun1.l.google.com:19302'] }
-            ]
-          }
-        }),
-        webRTC({
-          rtcConfiguration: {
-            iceServers: [
-              { urls: ['stun:stun.l.google.com:19302'] },
-              { urls: ['stun:stun1.l.google.com:19302'] }
-            ]
-          }
-        }),
-        circuitRelayTransport({
-          reservationCompletionTimeout: TIMEOUTS.RELAY_CONNECTION
-        })
-      ],
+      transports,
       connectionEncrypters: [noise()],
       streamMuxers: [yamux()],
       connectionManager: {
@@ -244,7 +293,7 @@ connectBtn.onclick = async () => {
       },
       peerDiscovery: [
         bootstrap({
-          list: bootstrappers
+          list: bootstrapAddresses  // Use dynamically fetched addresses
         }),
         pubsubPeerDiscovery({
           interval: INTERVALS.PUBSUB_PEER_DISCOVERY
@@ -252,16 +301,15 @@ connectBtn.onclick = async () => {
       ],
       services: {
         identify: identify(),
+        identifyPush: identifyPush(),
         autoNAT: autoNAT(),
-        // Note: DCUTR and identifyPush are not needed in browsers:
-        // - DCUTR requires TCP/UDP which browsers cannot use (WebRTC handles NAT traversal via ICE/STUN)
-        // - identifyPush is mainly useful for server nodes to push identity updates
+        dcutr: dcutr(),  // Enable DCUTR for automatic relay → direct WebRTC upgrades
         pubsub: gossipsub({
           emitSelf: false,
           allowPublishToZeroTopicPeers: true
         }),
         webrtcPeerExchange: webrtcPeerExchange({
-          enabled: true,
+          enabled: true,  // Always enabled
           debug: DEBUG
         })
       }
@@ -276,12 +324,18 @@ connectBtn.onclick = async () => {
     log(
       `libp2p node created with id: ${peerIdStr.slice(0, 8)}...${peerIdStr.slice(-4)}`
     )
-    log('Connecting to bootstrap relays...')
+    log(`Connecting to bootstrap relay via ${mode === 'webrtc' ? 'WebRTC-Direct' : 'WebSocket'}...`)
 
     // Expose for testing
     window.libp2pNode = libp2pNode
 
-    log('📡 Peer exchange service enabled')
+    log('📡 Peer exchange service enabled (all transports active)')
+    
+    // Update connection mode display
+    connectionModeEl.textContent = mode === 'webrtc' 
+      ? '✅ Bootstrap: WebRTC-Direct (all transports active)' 
+      : '✅ Bootstrap: WebSocket (all transports active)'
+    connectionModeEl.style.color = '#4caf50'
 
     // Create Yjs document and spreadsheet engine
     yjsDoc = new Y.Doc()
@@ -405,7 +459,10 @@ connectBtn.onclick = async () => {
     log(`Error: ${err.message}`, true)
 
     console.error('Connection error:', err)
-    connectBtn.disabled = false
+    connectWebRTCBtn.disabled = false
+    connectWebSocketBtn.disabled = false
+    connectionModeEl.textContent = `❌ Connection failed (${mode} mode)`
+    connectionModeEl.style.color = '#d32f2f'
 
     // Clean up on error
     if (libp2pNode) {
@@ -418,6 +475,10 @@ connectBtn.onclick = async () => {
     }
   }
 }
+
+// Button handlers - specify bootstrap mode
+connectWebRTCBtn.onclick = () => connectWithTransports('webrtc')
+connectWebSocketBtn.onclick = () => connectWithTransports('websocket')
 
 /**
  * Create the spreadsheet grid UI
@@ -469,9 +530,14 @@ function createSpreadsheetGrid () {
         }
       })
 
-      // Enter key - move to next row
+      // Arrow key navigation and Enter/Tab handlers
       // eslint-disable-next-line no-loop-func
       input.addEventListener('keydown', (e) => {
+        const { row: r, col: c } = a1ToCoord(coord)
+        let nextCoord = null
+        let shouldNavigate = false
+
+        // Handle navigation keys
         if (e.key === 'Enter') {
           e.preventDefault()
           const value = input.value.trim()
@@ -481,12 +547,61 @@ function createSpreadsheetGrid () {
             spreadsheetEngine.setCell(coord, value)
           }
 
-          // Move to cell below
-          const { row: r, col: c } = a1ToCoord(coord)
+          // Move to cell below (or stay if at bottom)
           if (r < gridSize.rows - 1) {
-            const nextCoord = coordToA1(r + 1, c)
-            document.getElementById(`cell-${nextCoord}`).focus()
+            nextCoord = coordToA1(r + 1, c)
           }
+          shouldNavigate = true
+        } else if (e.key === 'Tab') {
+          e.preventDefault()
+          
+          // Tab moves right, Shift+Tab moves left
+          if (e.shiftKey) {
+            if (c > 0) {
+              nextCoord = coordToA1(r, c - 1)
+            }
+          } else {
+            if (c < gridSize.cols - 1) {
+              nextCoord = coordToA1(r, c + 1)
+            }
+          }
+          shouldNavigate = true
+        } else if (e.key === 'ArrowUp') {
+          // Always navigate up (doesn't interfere with text editing)
+          e.preventDefault()
+          if (r > 0) {
+            nextCoord = coordToA1(r - 1, c)
+            shouldNavigate = true
+          }
+        } else if (e.key === 'ArrowDown') {
+          // Always navigate down (doesn't interfere with text editing)
+          e.preventDefault()
+          if (r < gridSize.rows - 1) {
+            nextCoord = coordToA1(r + 1, c)
+            shouldNavigate = true
+          }
+        } else if (e.key === 'ArrowLeft') {
+          // Navigate left only if cursor is at the start of the text
+          const cursorPos = input.selectionStart
+          if (cursorPos === 0 && c > 0) {
+            e.preventDefault()
+            nextCoord = coordToA1(r, c - 1)
+            shouldNavigate = true
+          }
+        } else if (e.key === 'ArrowRight') {
+          // Navigate right only if cursor is at the end of the text
+          const cursorPos = input.selectionStart
+          const textLength = input.value.length
+          if (cursorPos === textLength && c < gridSize.cols - 1) {
+            e.preventDefault()
+            nextCoord = coordToA1(r, c + 1)
+            shouldNavigate = true
+          }
+        }
+
+        // Move to next cell if determined
+        if (shouldNavigate && nextCoord) {
+          document.getElementById(`cell-${nextCoord}`).focus()
         }
       })
 

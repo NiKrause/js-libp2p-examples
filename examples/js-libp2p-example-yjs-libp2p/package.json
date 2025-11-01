@@ -12,7 +12,14 @@
     "test:firefox": "npm run build && playwright test --project=firefox",
     "test:chrome": "npm run build && playwright test --project=chromium",
     "test:webkit": "npm run build && playwright test --project=webkit",
-    "test": "npm run build && playwright test"
+    "test": "npm run build && playwright test",
+    "test:stun:node": "node test-stun-connectivity.js",
+    "test:stun:browser": "npm run build && playwright test test/stun-test.spec.js",
+    "test:stun:chrome": "npm run build && playwright test test/stun-test.spec.js --project=chromium",
+    "test:stun:firefox": "npm run build && playwright test test/stun-test.spec.js --project=firefox",
+    "test:stun:webkit": "npm run build && playwright test test/stun-test.spec.js --project=webkit",
+    "test:stun": "npm run test:stun:node && npm run test:stun:browser",
+    "test:debug:webkit": "npm run build && playwright test test/debug-webkit.spec.js --project=webkit"
   },
   "dependencies": {
     "@libp2p/gossipsub": "^15.0.9",

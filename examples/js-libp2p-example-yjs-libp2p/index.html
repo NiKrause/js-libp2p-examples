@@ -193,7 +193,11 @@
 
     <div id="status">
       <label>Topic: <input id="topic" value="spreadsheet-1" /></label>
-      <button id="connect">Connect</button>
+      <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+        <button id="connect-webrtc">Connect via WebRTC-Direct</button>
+        <button id="connect-websocket">Connect via WebSocket</button>
+      </div>
+      <div id="connection-mode" style="margin-top: 0.5rem; font-size: 0.9em; color: #666;"></div>
     </div>
 
     <div id="peers" style="display: none">

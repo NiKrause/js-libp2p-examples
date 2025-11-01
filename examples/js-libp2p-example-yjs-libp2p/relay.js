@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 
 import fs from 'fs'
+import http from 'http'
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
 import { autoNAT } from '@libp2p/autonat'
@@ -159,3 +160,42 @@ if (DEBUG) {
 
 console.info('\nRelay listening on:')
 server.getMultiaddrs().forEach((ma) => console.info(`  ${ma.toString()}`))
+
+// Create HTTP server to serve multiaddrs dynamically
+const httpServer = http.createServer((req, res) => {
+  // Enable CORS for browser requests
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204)
+    res.end()
+    return
+  }
+
+  if (req.url === '/api/addresses') {
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    
+    const multiaddrs = server.getMultiaddrs().map(ma => ma.toString())
+    
+    // Categorize addresses by type
+    const addresses = {
+      websocket: multiaddrs.filter(ma => ma.includes('/ws') || ma.includes('/wss')),
+      webrtcDirect: multiaddrs.filter(ma => ma.includes('/webrtc-direct')),
+      tcp: multiaddrs.filter(ma => ma.includes('/tcp/') && !ma.includes('/ws')),
+      all: multiaddrs
+    }
+    
+    res.end(JSON.stringify(addresses, null, 2))
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' })
+    res.end('Not found. Try /api/addresses')
+  }
+})
+
+const HTTP_PORT = 9094
+httpServer.listen(HTTP_PORT, '0.0.0.0', () => {
+  console.info(`\nHTTP API listening on: http://0.0.0.0:${HTTP_PORT}`)
+  console.info(`Get addresses: http://localhost:${HTTP_PORT}/api/addresses\n`)
+})
