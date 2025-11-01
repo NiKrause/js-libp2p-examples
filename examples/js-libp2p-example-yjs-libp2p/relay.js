@@ -176,9 +176,9 @@ const httpServer = http.createServer((req, res) => {
 
   if (req.url === '/api/addresses') {
     res.writeHead(200, { 'Content-Type': 'application/json' })
-    
+
     const multiaddrs = server.getMultiaddrs().map(ma => ma.toString())
-    
+
     // Categorize addresses by type
     const addresses = {
       websocket: multiaddrs.filter(ma => ma.includes('/ws') || ma.includes('/wss')),
@@ -186,7 +186,7 @@ const httpServer = http.createServer((req, res) => {
       tcp: multiaddrs.filter(ma => ma.includes('/tcp/') && !ma.includes('/ws')),
       all: multiaddrs
     }
-    
+
     res.end(JSON.stringify(addresses, null, 2))
   } else {
     res.writeHead(404, { 'Content-Type': 'text/plain' })

@@ -125,13 +125,13 @@ test.describe('STUN Server Connectivity', () => {
         console.log(`  🔄 Relay candidates: ${serverResult.relayCandidates}`)
 
         if (serverResult.hasSrflx) {
-          console.log(`  ✅ STUN server is working! (SRFLX candidates found)`)
+          console.log('  ✅ STUN server is working! (SRFLX candidates found)')
           hasAnySrflx = true
         } else {
-          console.log(`  ⚠️  No SRFLX candidates (STUN may not be working)`)
+          console.log('  ⚠️  No SRFLX candidates (STUN may not be working)')
         }
 
-        console.log(`\n  Candidate breakdown:`)
+        console.log('\n  Candidate breakdown:')
         const candidatesByType = {}
         serverResult.candidates.forEach(c => {
           const key = `${c.type}/${c.protocol}`
@@ -303,7 +303,7 @@ test.describe('STUN Server Connectivity', () => {
     console.log(`User Agent: ${browserInfo.userAgent}`)
     console.log(`\nICE Gathering State: ${browserInfo.iceGatheringState}`)
     console.log(`ICE Connection State: ${browserInfo.iceConnectionState}`)
-    console.log(`\nCandidate Types:`)
+    console.log('\nCandidate Types:')
     console.log(`  - Host: ${browserInfo.candidates.host}`)
     console.log(`  - SRFLX: ${browserInfo.candidates.srflx}`)
     console.log(`  - Relay: ${browserInfo.candidates.relay}`)
@@ -315,4 +315,3 @@ test.describe('STUN Server Connectivity', () => {
     await context.close()
   })
 })
-

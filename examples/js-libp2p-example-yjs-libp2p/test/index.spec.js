@@ -7,7 +7,7 @@ const url = 'http://localhost:5173'
 // Helper to connect a page to the spreadsheet
 async function connectToSpreadsheet (page, topic = 'test-topic', mode = 'webrtc') {
   await page.fill('#topic', topic)
-  
+
   // Click the appropriate connect button based on mode
   if (mode === 'websocket') {
     await page.click('#connect-websocket')
@@ -43,7 +43,7 @@ async function waitForWebRTCConnection (page, timeout = 60000) {
   await waitForPeerConnection(page, timeout)
 
   console.log('Peer connection reached 2+, now waiting for WebRTC badge...')
-  
+
   // Debug: Check what badges exist before waiting
   const badgesBeforeWait = await page.evaluate(() => {
     const badges = Array.from(document.querySelectorAll('.transport'))
@@ -263,7 +263,7 @@ test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
 
 test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
   test.setTimeout(120000) // Increase timeout for all tests to 2 minutes
-  
+
   test('should sync spreadsheet data via WebSocket bootstrap', async ({ browser }) => {
     const context1 = await browser.newContext()
     const context2 = await browser.newContext()

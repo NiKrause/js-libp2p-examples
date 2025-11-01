@@ -13,7 +13,6 @@ import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
 import { createLibp2p } from 'libp2p'
 import * as Y from 'yjs'
-import bootstrappers from './bootstrappers.js'
 import { DEBUG, TIMEOUTS, INTERVALS } from './constants.js'
 import { webrtcPeerExchange } from './peer-exchange.js'
 import {
@@ -204,12 +203,12 @@ async function connectWithTransports (mode = 'webrtc') {
   try {
     connectWebRTCBtn.disabled = true
     connectWebSocketBtn.disabled = true
-    
+
     // Show connection mode
-    connectionModeEl.textContent = mode === 'webrtc' 
-      ? '🔄 Fetching relay WebRTC-Direct addresses...' 
+    connectionModeEl.textContent = mode === 'webrtc'
+      ? '🔄 Fetching relay WebRTC-Direct addresses...'
       : '🔄 Fetching relay WebSocket addresses...'
-    
+
     // Fetch relay addresses dynamically
     let bootstrapAddresses = []
     try {
@@ -219,7 +218,7 @@ async function connectWithTransports (mode = 'webrtc') {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
       const addresses = await response.json()
-      
+
       if (mode === 'webrtc') {
         bootstrapAddresses = addresses.webrtcDirect
         log(`Found ${bootstrapAddresses.length} WebRTC-Direct address(es)`)
@@ -227,11 +226,11 @@ async function connectWithTransports (mode = 'webrtc') {
         bootstrapAddresses = addresses.websocket
         log(`Found ${bootstrapAddresses.length} WebSocket address(es)`)
       }
-      
+
       if (bootstrapAddresses.length === 0) {
         throw new Error(`No ${mode} addresses available from relay`)
       }
-      
+
       // Log the addresses we'll use
       bootstrapAddresses.forEach(addr => {
         log(`  → ${addr}`)
@@ -243,8 +242,8 @@ async function connectWithTransports (mode = 'webrtc') {
       log(`Using fallback addresses (${bootstrapAddresses.length} address(es))`)
     }
 
-    connectionModeEl.textContent = mode === 'webrtc' 
-      ? '🔄 Connecting via WebRTC-Direct...' 
+    connectionModeEl.textContent = mode === 'webrtc'
+      ? '🔄 Connecting via WebRTC-Direct...'
       : '🔄 Connecting via WebSocket...'
     log('Creating libp2p node...')
 
@@ -271,7 +270,7 @@ async function connectWithTransports (mode = 'webrtc') {
         reservationCompletionTimeout: TIMEOUTS.RELAY_CONNECTION
       })
     ]
-    
+
     // Create libp2p node with ALL transports always enabled
     libp2pNode = await createLibp2p({
       addresses: {
@@ -330,10 +329,10 @@ async function connectWithTransports (mode = 'webrtc') {
     window.libp2pNode = libp2pNode
 
     log('📡 Peer exchange service enabled (all transports active)')
-    
+
     // Update connection mode display
-    connectionModeEl.textContent = mode === 'webrtc' 
-      ? '✅ Bootstrap: WebRTC-Direct (all transports active)' 
+    connectionModeEl.textContent = mode === 'webrtc'
+      ? '✅ Bootstrap: WebRTC-Direct (all transports active)'
       : '✅ Bootstrap: WebSocket (all transports active)'
     connectionModeEl.style.color = '#4caf50'
 
@@ -554,7 +553,7 @@ function createSpreadsheetGrid () {
           shouldNavigate = true
         } else if (e.key === 'Tab') {
           e.preventDefault()
-          
+
           // Tab moves right, Shift+Tab moves left
           if (e.shiftKey) {
             if (c > 0) {
