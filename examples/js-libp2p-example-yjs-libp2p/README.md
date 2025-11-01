@@ -37,10 +37,9 @@ This example demonstrates how to create a Yjs connection provider using libp2p i
 - **Custom Yjs Provider**: A libp2p-based connection provider for Yjs
 - **WebRTC Support**: Direct peer-to-peer connections using WebRTC
 - **Circuit Relay**: NAT traversal via relay servers
-- **DCUTR**: Direct Connection Upgrade through Relay (hole punching)
 - **AutoNAT**: Automatic NAT detection
 - **PubSub**: GossipSub for document synchronization
-- **Peer Discovery**: Automatic connection to discovered peers
+- **Peer Discovery**: Automatic connection to discovered peers via pubsub peer discovery
 
 ## Architecture
 

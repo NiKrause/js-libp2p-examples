@@ -1,15 +1,12 @@
 /* eslint-disable no-console */
 
-// Using floodsub instead of gossipsub due to multiaddr.tuples() compatibility issues
-// with gossipsub v14.x and multiaddr v13.x at the time of writing (2025-01)
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
 import { autoNAT } from '@libp2p/autonat'
 import { bootstrap } from '@libp2p/bootstrap'
 import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
-import { dcutr } from '@libp2p/dcutr'
-import { floodsub } from '@libp2p/floodsub'
-import { identify, identifyPush } from '@libp2p/identify'
+import { gossipsub } from '@libp2p/gossipsub'
+import { identify } from '@libp2p/identify'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
@@ -17,6 +14,7 @@ import { createLibp2p } from 'libp2p'
 import * as Y from 'yjs'
 import bootstrappers from './bootstrappers.js'
 import { DEBUG, TIMEOUTS, INTERVALS } from './constants.js'
+import { webrtcPeerExchange } from './peer-exchange.js'
 import {
   SpreadsheetEngine,
   coordToA1,
@@ -38,7 +36,9 @@ const formulaBar = document.getElementById('formula-bar')
 const spreadsheetContainer = document.getElementById('spreadsheet-container')
 const examplesEl = document.getElementById('examples')
 const multiaddrsEl = document.getElementById('multiaddrs')
-const multiaddrListEl = document.getElementById('multiaddr-list')
+const multiaddrSelectEl = document.getElementById('multiaddr-select')
+const peerIdDisplayEl = document.getElementById('peer-id-display')
+const peerIdValueEl = document.getElementById('peer-id-value')
 
 let libp2pNode
 let yjsDoc
@@ -47,8 +47,11 @@ let spreadsheetEngine
 let currentCell = null
 const gridSize = { rows: 10, cols: 8 } // Start with 10x8 grid
 
+// Track peer connection transports to detect upgrades
+const peerTransports = new Map() // peerId -> Set of transport types
+
 /**
- * Logs a message to both console and UI.
+ * Logs a message to both console and UI (latest messages on top).
  *
  * @param {string} message - Message to log
  * @param {boolean} [isError] - Whether this is an error message
@@ -57,8 +60,11 @@ const log = (message, isError = false) => {
   if (DEBUG) {
     console.log(message)
   }
-  logEl.textContent += message + '\n'
-  logEl.scrollTop = logEl.scrollHeight
+
+  // Prepend message (latest on top)
+  const timestamp = new Date().toLocaleTimeString()
+  const logMessage = `[${timestamp}] ${message}`
+  logEl.value = logMessage + (logEl.value ? '\n' + logEl.value : '')
 
   if (isError) {
     logEl.style.color = '#d32f2f'
@@ -81,25 +87,27 @@ const updateMultiaddrDisplay = () => {
   multiaddrsEl.style.display = 'block'
 
   if (multiaddrs.length > 0) {
-    multiaddrListEl.innerHTML = ''
+    multiaddrSelectEl.innerHTML = ''
     for (const ma of multiaddrs) {
-      const li = document.createElement('li')
+      const option = document.createElement('option')
       const maStr = ma.toString()
 
-      // Highlight relay addresses
+      // Add label for relay addresses
       if (maStr.includes('/p2p-circuit')) {
-        li.style.color = '#1565c0'
-        li.style.fontWeight = '600'
-        li.textContent = `${maStr} (relay reservation)`
+        option.textContent = `${maStr} (relay)`
+      } else if (maStr.includes('/webrtc')) {
+        option.textContent = `${maStr} (WebRTC)`
+      } else if (maStr.includes('/ws')) {
+        option.textContent = `${maStr} (WebSocket)`
       } else {
-        li.textContent = maStr
+        option.textContent = maStr
       }
 
-      multiaddrListEl.appendChild(li)
+      multiaddrSelectEl.appendChild(option)
     }
   } else {
     // Show message when no addresses yet
-    multiaddrListEl.innerHTML = "<li style='color: #666; font-style: italic;'>Waiting for addresses (relay reservation in progress...)</li>"
+    multiaddrSelectEl.innerHTML = '<option disabled>Waiting for addresses (relay reservation in progress...)</option>'
   }
 }
 
@@ -124,10 +132,11 @@ const updatePeerDisplay = () => {
     const remoteAddr = conn.remoteAddr.toString()
     let transport = 'unknown'
 
-    if (remoteAddr.includes('/p2p-circuit')) {
-      transport = 'relay'
-    } else if (remoteAddr.includes('/webrtc')) {
+    // Check WebRTC first - WebRTC addresses can contain /p2p-circuit but are still direct connections
+    if (remoteAddr.includes('/webrtc')) {
       transport = 'webrtc'
+    } else if (remoteAddr.includes('/p2p-circuit')) {
+      transport = 'relay'
     } else if (remoteAddr.includes('/wss') || remoteAddr.includes('/tls/ws')) {
       transport = 'websocket-secure'
     } else if (remoteAddr.includes('/ws')) {
@@ -200,7 +209,14 @@ connectBtn.onclick = async () => {
       },
       transports: [
         webSockets(),
-        webRTCDirect(),
+        webRTCDirect({
+          rtcConfiguration: {
+            iceServers: [
+              { urls: ['stun:stun.l.google.com:19302'] },
+              { urls: ['stun:stun1.l.google.com:19302'] }
+            ]
+          }
+        }),
         webRTC({
           rtcConfiguration: {
             iceServers: [
@@ -236,14 +252,27 @@ connectBtn.onclick = async () => {
       ],
       services: {
         identify: identify(),
-        identifyPush: identifyPush(),
         autoNAT: autoNAT(),
-        dcutr: dcutr(),
-        pubsub: floodsub()
+        // Note: DCUTR and identifyPush are not needed in browsers:
+        // - DCUTR requires TCP/UDP which browsers cannot use (WebRTC handles NAT traversal via ICE/STUN)
+        // - identifyPush is mainly useful for server nodes to push identity updates
+        pubsub: gossipsub({
+          emitSelf: false,
+          allowPublishToZeroTopicPeers: true
+        }),
+        webrtcPeerExchange: webrtcPeerExchange({
+          enabled: true,
+          debug: DEBUG
+        })
       }
     })
 
     const peerIdStr = libp2pNode.peerId.toString()
+
+    // Display peer ID at the top
+    peerIdValueEl.textContent = peerIdStr
+    peerIdDisplayEl.style.display = 'block'
+
     log(
       `libp2p node created with id: ${peerIdStr.slice(0, 8)}...${peerIdStr.slice(-4)}`
     )
@@ -252,48 +281,7 @@ connectBtn.onclick = async () => {
     // Expose for testing
     window.libp2pNode = libp2pNode
 
-    // Wait for relay reservation to be created automatically
-    // Note: Manual reservation was needed due to gossipsub/floodsub multiaddr compatibility issues
-    // Testing if automatic reservation works now with floodsub
-    /*
-    await new Promise((resolve) => {
-      const identifyHandler = async (evt) => {
-        const peerId = evt.detail.peerId || evt.detail;
-
-        try {
-          const peer = await libp2pNode.peerStore.get(peerId);
-
-          if (peer?.protocols.includes('/libp2p/circuit/relay/0.2.0/hop')) {
-            libp2pNode.removeEventListener('peer:identify', identifyHandler);
-
-            // Manually create reservation (topology callback may fail due to pubsub errors)
-            const transport = libp2pNode.components.transportManager.getTransports()
-              .find(t => t[Symbol.toStringTag] === '@libp2p/circuit-relay-v2-transport');
-
-            if (transport?.reservationStore) {
-              await transport.reservationStore.addRelay(peerId, 'discovered');
-              log('✅ Relay reservation obtained');
-            }
-
-            resolve();
-          }
-        } catch (err) {
-          console.error('Reservation error:', err.message);
-          resolve();
-        }
-      };
-
-      libp2pNode.addEventListener('peer:identify', identifyHandler);
-
-      setTimeout(() => {
-        libp2pNode.removeEventListener('peer:identify', identifyHandler);
-        resolve();
-      }, 10000);
-    });
-    */
-
-    // Give bootstrap and automatic reservation a moment to complete
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    log('📡 Peer exchange service enabled')
 
     // Create Yjs document and spreadsheet engine
     yjsDoc = new Y.Doc()
@@ -343,25 +331,59 @@ connectBtn.onclick = async () => {
       }
     })
 
-    // Update displays on connection events
-    libp2pNode.addEventListener('peer:connect', (evt) => {
-      const connections = libp2pNode.getConnections(evt.detail)
-      const transports = connections.map(c => {
-        const addr = c.remoteAddr.toString()
-        if (addr.includes('/webrtc')) { return 'webrtc' }
-        if (addr.includes('/p2p-circuit')) { return 'relay' }
-        if (addr.includes('/ws')) { return 'websocket' }
-        return 'unknown'
-      })
-      log(`Connected to ${evt.detail.toString().slice(0, 8)}...${evt.detail.toString().slice(-4)} via ${transports.join(', ')}`)
+    // Listen for new connections opening (fires for each individual connection)
+    libp2pNode.addEventListener('connection:open', (evt) => {
+      const connection = evt.detail
+      const peerId = connection.remotePeer.toString()
+      const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
+      const addr = connection.remoteAddr.toString()
+
+      // Determine transport type
+      let transport = 'unknown'
+      if (addr.includes('/webrtc')) {
+        transport = 'webrtc'
+      } else if (addr.includes('/p2p-circuit')) {
+        transport = 'relay'
+      } else if (addr.includes('/ws')) {
+        transport = 'websocket'
+      }
+
+      // Check if this is a WebRTC upgrade
+      const previousTransports = peerTransports.get(peerId)
+      const hadWebRTC = previousTransports?.has('webrtc')
+
+      if (transport === 'webrtc' && !hadWebRTC && previousTransports) {
+        // WebRTC upgrade happened!
+        log(`🎉 WebRTC upgrade! ${peerIdShort} upgraded to direct connection`)
+      } else {
+        log(`Connected to ${peerIdShort} via ${transport}`)
+      }
+
+      // Update transport tracking
+      if (!peerTransports.has(peerId)) {
+        peerTransports.set(peerId, new Set())
+      }
+      peerTransports.get(peerId).add(transport)
+
+      // Peer exchange is now handled automatically by the webrtcPeerExchange service
+
+      // Log full multiaddr in debug mode
+      if (DEBUG) {
+        console.log(`  Connection opened: ${addr}`)
+      }
+
       updatePeerDisplay()
     })
 
     libp2pNode.addEventListener('peer:disconnect', (evt) => {
+      const peerId = evt.detail.toString()
+      const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
+
+      // Clean up transport tracking
+      peerTransports.delete(peerId)
+
+      log(`Disconnected from peer: ${peerIdShort}`)
       updatePeerDisplay()
-      if (DEBUG) {
-        log(`Disconnected from peer: ${evt.detail.toString().slice(0, 12)}...`)
-      }
     })
 
     // Update multiaddrs when they change (e.g., relay reservation obtained)

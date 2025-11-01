@@ -17,6 +17,29 @@ async function connectToSpreadsheet (page, topic = 'test-topic') {
   )
 }
 
+// Helper to wait for WebRTC connection (green badge)
+async function waitForWebRTCConnection (page, timeout = 60000) {
+  // Wait for peer count to be at least 2 (including relay)
+  await page.waitForFunction(
+    () => {
+      const peerCountEl = document.querySelector('#peer-count')
+      return peerCountEl && parseInt(peerCountEl.textContent) >= 2
+    },
+    { timeout }
+  )
+
+  // Wait for WebRTC transport badge to appear (green badge)
+  await page.waitForFunction(
+    () => {
+      const webrtcBadge = document.querySelector('.transport.webrtc')
+      return webrtcBadge !== null
+    },
+    { timeout }
+  )
+
+  console.log('WebRTC connection established!')
+}
+
 test.describe('Collaborative Spreadsheet - Yjs + libp2p', () => {
   test.setTimeout(120000) // Increase timeout for all tests to 2 minutes
   test('should load spreadsheet page in two browsers', async ({ browser }) => {
@@ -60,25 +83,21 @@ test.describe('Collaborative Spreadsheet - Yjs + libp2p', () => {
 
     // Wait for both to be connected and ready
     await page1.waitForFunction(
-      () => document.getElementById('log').textContent.includes('Ready!'),
+      () => document.getElementById('log').value.includes('Ready!'),
       { timeout: 15000 }
     )
     await page2.waitForFunction(
-      () => document.getElementById('log').textContent.includes('Ready!'),
+      () => document.getElementById('log').value.includes('Ready!'),
       { timeout: 15000 }
     )
 
-    // Wait for peer discovery and connection (can take up to 30 seconds)
-    await page1.waitForFunction(
-      () => document.querySelector('#peer-count')?.textContent === '2',
-      { timeout: 35000 }
-    )
-    await page2.waitForFunction(
-      () => document.querySelector('#peer-count')?.textContent === '2',
-      { timeout: 35000 }
-    )
+    // Wait for WebRTC connection to be established (green badge appears)
+    console.log('Waiting for WebRTC connections...')
+    await waitForWebRTCConnection(page1, 60000)
+    await waitForWebRTCConnection(page2, 60000)
+    console.log('WebRTC connections established on both pages!')
 
-    // Give Yjs extra time to fully sync
+    // Give Yjs extra time to fully sync after WebRTC connection
     await page1.waitForTimeout(2000)
 
     // Enter value in cell A1 on page 1
@@ -129,25 +148,21 @@ test.describe('Collaborative Spreadsheet - Yjs + libp2p', () => {
     await connectToSpreadsheet(page2, testTopic)
 
     await page1.waitForFunction(
-      () => document.getElementById('log').textContent.includes('Ready!'),
+      () => document.getElementById('log').value.includes('Ready!'),
       { timeout: 15000 }
     )
     await page2.waitForFunction(
-      () => document.getElementById('log').textContent.includes('Ready!'),
+      () => document.getElementById('log').value.includes('Ready!'),
       { timeout: 15000 }
     )
 
-    // Wait for peer discovery and connection (can take up to 30 seconds)
-    await page1.waitForFunction(
-      () => document.querySelector('#peer-count')?.textContent === '2',
-      { timeout: 35000 }
-    )
-    await page2.waitForFunction(
-      () => document.querySelector('#peer-count')?.textContent === '2',
-      { timeout: 35000 }
-    )
+    // Wait for WebRTC connection to be established (green badge appears)
+    console.log('Waiting for WebRTC connections...')
+    await waitForWebRTCConnection(page1, 60000)
+    await waitForWebRTCConnection(page2, 60000)
+    console.log('WebRTC connections established on both pages!')
 
-    // Give Yjs extra time to fully sync
+    // Give Yjs extra time to fully sync after WebRTC connection
     await page1.waitForTimeout(2000)
 
     // Test basic arithmetic: A1 + B1

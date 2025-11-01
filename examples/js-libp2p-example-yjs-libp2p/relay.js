@@ -1,7 +1,5 @@
 /* eslint-disable no-console */
 
-// Using floodsub instead of gossipsub due to multiaddr.tuples() compatibility issues
-// with gossipsub v14.x and multiaddr v13.x at the time of writing (2025-01)
 import fs from 'fs'
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
@@ -12,7 +10,7 @@ import {
 } from '@libp2p/circuit-relay-v2'
 import { privateKeyFromProtobuf } from '@libp2p/crypto/keys'
 import { dcutr } from '@libp2p/dcutr'
-import { floodsub } from '@libp2p/floodsub'
+import { gossipsub } from '@libp2p/gossipsub'
 import { identify, identifyPush } from '@libp2p/identify'
 import { createEd25519PeerId, createFromJSON } from '@libp2p/peer-id-factory'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
@@ -93,7 +91,10 @@ const server = await createLibp2p({
     identifyPush: identifyPush(),
     autoNAT: autoNAT(),
     dcutr: dcutr(),
-    pubsub: floodsub(),
+    pubsub: gossipsub({
+      emitSelf: false,
+      allowPublishToZeroTopicPeers: true
+    }),
     relay: circuitRelayServer({
       hopTimeout: RELAY_TIMEOUTS.HOP_TIMEOUT,
       reservations: {

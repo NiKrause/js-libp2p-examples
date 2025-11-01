@@ -142,33 +142,54 @@
         padding: 0.2rem 0.4rem;
         border-radius: 3px;
       }
+      #peer-id-display {
+        background: #e3f2fd;
+        padding: 0.75rem 1rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.9em;
+        border: 1px solid #90caf9;
+      }
+      #peer-id-display strong {
+        font-family: system-ui;
+        margin-right: 0.5rem;
+      }
+      #peer-id-value {
+        color: #1565c0;
+        font-weight: 600;
+      }
       #multiaddrs {
         margin-top: 1rem;
         padding: 1rem;
         background: #f0f7ff;
         border: 1px solid #90caf9;
         border-radius: 4px;
-        font-family: ui-monospace, monospace;
-        font-size: 0.85em;
       }
       #multiaddrs h3 {
         margin-top: 0;
         font-family: system-ui;
+        font-size: 1em;
+        margin-bottom: 0.5rem;
       }
-      #multiaddrs ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-      }
-      #multiaddrs li {
-        padding: 0.25rem 0;
-        word-break: break-all;
+      #multiaddr-select {
+        width: 100%;
+        padding: 0.5rem;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85em;
+        border: 1px solid #90caf9;
+        border-radius: 4px;
+        background: white;
       }
     </style>
   </head>
   <body>
     <h1>Collaborative Spreadsheet</h1>
     <p>P2P Spreadsheet with formulas powered by Yjs + libp2p</p>
+
+    <div id="peer-id-display" style="display: none">
+      <strong>My Peer ID:</strong> <span id="peer-id-value"></span>
+    </div>
 
     <div id="status">
       <label>Topic: <input id="topic" value="spreadsheet-1" /></label>
@@ -206,10 +227,18 @@
 
     <div id="multiaddrs" style="display: none">
       <h3>My Multiaddresses</h3>
-      <ul id="multiaddr-list"></ul>
+      <select id="multiaddr-select" size="5"></select>
     </div>
 
-    <pre id="log"></pre>
+    <div style="margin-top: 1rem;">
+      <h3>Activity Log</h3>
+      <textarea 
+        id="log" 
+        readonly 
+        style="width: 100%; height: 200px; font-family: ui-monospace, monospace; font-size: 0.9em; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; resize: vertical; background: #f9f9f9;"
+      ></textarea>
+    </div>
+
     <script type="module" src="./index.js"></script>
   </body>
 </html>
