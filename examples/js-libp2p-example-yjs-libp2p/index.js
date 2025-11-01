@@ -17,12 +17,11 @@ import { DEBUG, TIMEOUTS, INTERVALS } from './constants.js'
 import { webrtcPeerExchange } from './peer-exchange.js'
 import {
   SpreadsheetEngine,
-  coordToA1,
-  a1ToCoord
+  SpreadsheetUI
 } from './spreadsheet-engine.js'
 import { Libp2pProvider } from './yjs-libp2p-provider.js'
 
-// UI elements
+// UI elements (network and logging related)
 const topicInput = document.getElementById('topic')
 const connectWebRTCBtn = document.getElementById('connect-webrtc')
 const connectWebSocketBtn = document.getElementById('connect-websocket')
@@ -31,12 +30,6 @@ const logEl = document.getElementById('log')
 const peersEl = document.getElementById('peers')
 const peerCountEl = document.getElementById('peer-count')
 const peerListEl = document.getElementById('peer-list')
-const spreadsheetEl = document.getElementById('spreadsheet')
-const formulaInput = document.getElementById('formula-input')
-const cellRefEl = document.getElementById('cell-ref')
-const formulaBar = document.getElementById('formula-bar')
-const spreadsheetContainer = document.getElementById('spreadsheet-container')
-const examplesEl = document.getElementById('examples')
 const multiaddrsEl = document.getElementById('multiaddrs')
 const multiaddrSelectEl = document.getElementById('multiaddr-select')
 const peerIdDisplayEl = document.getElementById('peer-id-display')
@@ -46,8 +39,7 @@ let libp2pNode
 let yjsDoc
 let provider
 let spreadsheetEngine
-let currentCell = null
-const gridSize = { rows: 10, cols: 8 } // Start with 10x8 grid
+let spreadsheetUI
 
 // Track peer connection transports to detect upgrades
 const peerTransports = new Map() // peerId -> Set of transport types
@@ -344,17 +336,12 @@ async function connectWithTransports (mode = 'webrtc') {
     log(`Setting up Yjs provider with topic: ${topic}`)
     provider = new Libp2pProvider(topic, yjsDoc, libp2pNode)
 
-    // Create spreadsheet grid
-    createSpreadsheetGrid()
+    // Create and initialize spreadsheet UI
+    spreadsheetUI = new SpreadsheetUI(spreadsheetEngine)
+    spreadsheetUI.initialize()
 
-    // Watch for cell changes
-    spreadsheetEngine.onChange(updateCellDisplay)
-
-    // Show spreadsheet UI
-    spreadsheetContainer.style.display = 'block'
-    formulaBar.style.display = 'flex'
-    examplesEl.style.display = 'block'
-    formulaInput.disabled = false
+    // Expose for testing
+    window.spreadsheetUI = spreadsheetUI
 
     log(
       'Ready! Open this page in another browser tab or window to collaborate.'
@@ -478,236 +465,6 @@ async function connectWithTransports (mode = 'webrtc') {
 // Button handlers - specify bootstrap mode
 connectWebRTCBtn.onclick = () => connectWithTransports('webrtc')
 connectWebSocketBtn.onclick = () => connectWithTransports('websocket')
-
-/**
- * Create the spreadsheet grid UI
- */
-function createSpreadsheetGrid () {
-  // Create header row with column letters
-  const headerRow = document.createElement('tr')
-  headerRow.appendChild(document.createElement('th')) // Corner cell
-
-  for (let col = 0; col < gridSize.cols; col++) {
-    const th = document.createElement('th')
-    th.textContent = colToLetter(col)
-    headerRow.appendChild(th)
-  }
-  spreadsheetEl.appendChild(headerRow)
-
-  // Create data rows
-  for (let row = 0; row < gridSize.rows; row++) {
-    const tr = document.createElement('tr')
-
-    // Row header
-    const rowHeader = document.createElement('th')
-    rowHeader.textContent = row + 1
-    tr.appendChild(rowHeader)
-
-    // Data cells
-    for (let col = 0; col < gridSize.cols; col++) {
-      const td = document.createElement('td')
-      const input = document.createElement('input')
-      const coord = coordToA1(row, col)
-
-      td.dataset.cell = coord
-      input.id = `cell-${coord}`
-      input.type = 'text'
-
-      // Focus handler - select cell
-      input.addEventListener('focus', () => {
-        selectCell(coord)
-      })
-
-      // Input handler - update cell value
-      // eslint-disable-next-line no-loop-func
-      input.addEventListener('blur', () => {
-        const value = input.value.trim()
-        if (value === '') {
-          spreadsheetEngine.clearCell(coord)
-        } else {
-          spreadsheetEngine.setCell(coord, value)
-        }
-      })
-
-      // Arrow key navigation and Enter/Tab handlers
-      // eslint-disable-next-line no-loop-func
-      input.addEventListener('keydown', (e) => {
-        const { row: r, col: c } = a1ToCoord(coord)
-        let nextCoord = null
-        let shouldNavigate = false
-
-        // Handle navigation keys
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          const value = input.value.trim()
-          if (value === '') {
-            spreadsheetEngine.clearCell(coord)
-          } else {
-            spreadsheetEngine.setCell(coord, value)
-          }
-
-          // Move to cell below (or stay if at bottom)
-          if (r < gridSize.rows - 1) {
-            nextCoord = coordToA1(r + 1, c)
-          }
-          shouldNavigate = true
-        } else if (e.key === 'Tab') {
-          e.preventDefault()
-
-          // Tab moves right, Shift+Tab moves left
-          if (e.shiftKey) {
-            if (c > 0) {
-              nextCoord = coordToA1(r, c - 1)
-            }
-          } else {
-            if (c < gridSize.cols - 1) {
-              nextCoord = coordToA1(r, c + 1)
-            }
-          }
-          shouldNavigate = true
-        } else if (e.key === 'ArrowUp') {
-          // Always navigate up (doesn't interfere with text editing)
-          e.preventDefault()
-          if (r > 0) {
-            nextCoord = coordToA1(r - 1, c)
-            shouldNavigate = true
-          }
-        } else if (e.key === 'ArrowDown') {
-          // Always navigate down (doesn't interfere with text editing)
-          e.preventDefault()
-          if (r < gridSize.rows - 1) {
-            nextCoord = coordToA1(r + 1, c)
-            shouldNavigate = true
-          }
-        } else if (e.key === 'ArrowLeft') {
-          // Navigate left only if cursor is at the start of the text
-          const cursorPos = input.selectionStart
-          if (cursorPos === 0 && c > 0) {
-            e.preventDefault()
-            nextCoord = coordToA1(r, c - 1)
-            shouldNavigate = true
-          }
-        } else if (e.key === 'ArrowRight') {
-          // Navigate right only if cursor is at the end of the text
-          const cursorPos = input.selectionStart
-          const textLength = input.value.length
-          if (cursorPos === textLength && c < gridSize.cols - 1) {
-            e.preventDefault()
-            nextCoord = coordToA1(r, c + 1)
-            shouldNavigate = true
-          }
-        }
-
-        // Move to next cell if determined
-        if (shouldNavigate && nextCoord) {
-          document.getElementById(`cell-${nextCoord}`).focus()
-        }
-      })
-
-      td.appendChild(input)
-      tr.appendChild(td)
-    }
-
-    spreadsheetEl.appendChild(tr)
-  }
-
-  // Select first cell by default
-  selectCell('A1')
-}
-
-/**
- * Convert column index to letter
- *
- * @param col
- */
-function colToLetter (col) {
-  let letter = ''
-  while (col >= 0) {
-    letter = String.fromCharCode(65 + (col % 26)) + letter
-    col = Math.floor(col / 26) - 1
-  }
-  return letter
-}
-
-/**
- * Select a cell and update formula bar
- *
- * @param coord
- */
-function selectCell (coord) {
-  // Remove previous selection
-  if (currentCell) {
-    const prevTd = document.getElementById(
-      `cell-${currentCell}`
-    )?.parentElement
-    if (prevTd) { prevTd.classList.remove('selected') }
-  }
-
-  currentCell = coord
-
-  // Add selection to new cell
-  const td = document.getElementById(`cell-${coord}`)?.parentElement
-  if (td) { td.classList.add('selected') }
-
-  // Update formula bar
-  cellRefEl.textContent = coord + ':'
-  const cell = spreadsheetEngine.getCell(coord)
-  formulaInput.value = cell.formula || cell.value
-}
-
-/**
- * Update cell display when value changes
- *
- * @param coord
- */
-function updateCellDisplay (coord) {
-  const input = document.getElementById(`cell-${coord}`)
-  if (!input) { return }
-
-  const cell = spreadsheetEngine.getCell(coord)
-  const td = input.parentElement
-
-  // Only update if not currently focused
-  if (document.activeElement !== input) {
-    input.value = cell.value
-  }
-
-  // Update error styling
-  if (
-    cell.error ||
-    (typeof cell.value === 'string' && cell.value.startsWith('#'))
-  ) {
-    td.classList.add('error')
-  } else {
-    td.classList.remove('error')
-  }
-
-  // Update formula bar if this is the selected cell
-  if (currentCell === coord) {
-    formulaInput.value = cell.formula || cell.value
-  }
-}
-
-// Formula bar input handler
-if (formulaInput) {
-  formulaInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && currentCell) {
-      e.preventDefault()
-      const value = formulaInput.value.trim()
-      const input = document.getElementById(`cell-${currentCell}`)
-
-      if (value === '') {
-        spreadsheetEngine.clearCell(currentCell)
-        if (input) { input.value = '' }
-      } else {
-        spreadsheetEngine.setCell(currentCell, value)
-      }
-
-      // Refocus the cell
-      if (input) { input.focus() }
-    }
-  })
-}
 
 /**
  * Cleanup resources on page unload.

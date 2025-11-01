@@ -14,6 +14,7 @@
 - [Setup](#setup)
 - [Usage](#usage)
   - [Debug Mode](#debug-mode)
+- [Browser Compatibility](#browser-compatibility)
 - [How It Works](#how-it-works)
   - [Libp2p Configuration](#libp2p-configuration)
   - [Yjs Integration](#yjs-integration)
@@ -107,6 +108,16 @@ Add `?debug=true` to the URL:
 ```
 http://localhost:5173/?debug=true
 ```
+
+## Browser Compatibility
+
+This example has been tested with the following browsers:
+
+- ✅ **Chrome/Chromium**: Fully supported and tested
+- ⚠️ **Firefox**: Known issues with WebRTC connections - direct peer-to-peer connections may not establish reliably
+- ❓ **Safari/WebKit**: Untested - compatibility unknown
+
+**Recommendation:** Use Chrome or Chromium-based browsers for the best experience with WebRTC direct connections.
 
 ## How It Works
 
