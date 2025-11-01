@@ -365,7 +365,7 @@ test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
 
     // Wait for Yjs sync to page 1
     await page1.waitForTimeout(3000)
-    
+
     // Blur any focused input to allow UI updates
     // The UI intentionally skips updating focused inputs to avoid interfering with user editing.
     // During testing, inputs can remain focused from previous interactions, preventing sync updates
@@ -466,7 +466,7 @@ test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
     // Step 11: Verify sync back to page 1
     console.log('Step 11: Verifying sync back to page 1')
     await page1.waitForTimeout(3000) // Give extra time for sync
-    
+
     // Blur focused inputs to ensure synced values are displayed
     await page1.evaluate(() => {
       if (document.activeElement && document.activeElement.tagName === 'INPUT') {

@@ -770,7 +770,7 @@ export class SpreadsheetUI {
    */
   updateCellDisplay (coord) {
     const input = document.getElementById(`cell-${coord}`)
-    if (!input) return
+    if (!input) { return }
 
     const cell = this.engine.getCell(coord)
     const td = input.parentElement
