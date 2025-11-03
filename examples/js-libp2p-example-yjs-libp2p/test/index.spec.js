@@ -771,10 +771,10 @@ test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
   test('late joiner should receive all existing data', async ({ browser }) => {
     // This test specifically validates the fix for late joiners
     // Browser 1 connects, adds data, then Browser 2 connects later and should see everything
-    
+
     // Increase timeout for CI where connections are slower
     test.setTimeout(process.env.CI ? 300000 : 120000) // 5 min for CI, 2 min for local
-    
+
     const context1 = await browser.newContext()
     const page1 = await context1.newPage()
 
