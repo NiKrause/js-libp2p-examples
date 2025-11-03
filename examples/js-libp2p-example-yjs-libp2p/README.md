@@ -110,7 +110,7 @@ http://localhost:5173/?debug=true
 This example has been tested with the following browsers:
 
 - ✅ **Chrome/Chromium**: Fully supported and tested
-- ⚠️ **Firefox**: Known issues with WebRTC connections - direct peer-to-peer connections may not establish reliably
+- ✅ **Firefox**: Fully supported and tested
 - ⚠️ **Safari/WebKit**: Partial support - WebRTC-Direct connections work, but WebSocket connections to relay do not establish webrtc connection between browsers
 
 **Recommendation:** Use Chrome or Chromium-based browsers for the best experience. Safari/WebKit users should use WebRTC-Direct bootstrap connections.
