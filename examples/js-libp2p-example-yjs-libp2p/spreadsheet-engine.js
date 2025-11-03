@@ -636,6 +636,15 @@ export class SpreadsheetUI {
 
       this.elements.spreadsheet.appendChild(tr)
     }
+
+    // Populate grid with any existing data from Yjs document
+    // This is crucial for late joiners who receive data after UI initialization
+    for (let row = 0; row < this.gridSize.rows; row++) {
+      for (let col = 0; col < this.gridSize.cols; col++) {
+        const coord = coordToA1(row, col)
+        this.updateCellDisplay(coord)
+      }
+    }
   }
 
   /**

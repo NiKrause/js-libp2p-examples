@@ -149,12 +149,36 @@ export class Libp2pProvider {
 
   /**
    * Request initial document state from connected peers.
+   * Waits for gossipsub mesh to form before sending sync request.
    *
    * @private
    * @returns {Promise<void>}
    */
   async _requestInitialState () {
-    setTimeout(() => {
+    const attemptSync = () => {
+      const subscribers = this.libp2p.services.pubsub.getSubscribers(this.topic)
+
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log(`Sync attempt: ${subscribers.length} subscriber(s) on topic ${this.topic}`)
+      }
+
+      if (subscribers.length === 0) {
+        // No peers in gossipsub mesh yet, retry
+        if (DEBUG) {
+          // eslint-disable-next-line no-console
+          console.log('No subscribers yet, retrying sync request in 1s...')
+        }
+        setTimeout(attemptSync, 1000)
+        return
+      }
+
+      // Found subscribers! Now send sync request
+      if (DEBUG) {
+        // eslint-disable-next-line no-console
+        console.log('Subscribers found! Sending sync request...')
+      }
+
       const stateVector = Y.encodeStateVector(this.doc)
       this._publishMessage({
         type: 'sync-request',
@@ -165,7 +189,10 @@ export class Libp2pProvider {
           console.error('Failed to send sync request:', err)
         }
       })
-    }, INTERVALS.INITIAL_SYNC_REQUEST)
+    }
+
+    // Start attempting after initial delay
+    setTimeout(attemptSync, INTERVALS.INITIAL_SYNC_REQUEST)
   }
 
   /**

@@ -767,4 +767,117 @@ test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
     await context1.close()
     await context2.close()
   })
+
+  test('late joiner should receive all existing data', async ({ browser }) => {
+    // This test specifically validates the fix for late joiners
+    // Browser 1 connects, adds data, then Browser 2 connects later and should see everything
+    const context1 = await browser.newContext()
+    const page1 = await context1.newPage()
+
+    // Enable console logging for debugging
+    page1.on('console', msg => console.log('Page1:', msg.text()))
+
+    await page1.goto(url)
+
+    const testTopic = `late-join-test-${Date.now()}`
+    await connectToSpreadsheet(page1, testTopic, 'webrtc')
+
+    await page1.waitForFunction(
+      () => document.getElementById('log').value.includes('Ready!'),
+      { timeout: 15000 }
+    )
+
+    // Browser 1 adds data to multiple cells BEFORE Browser 2 connects
+    console.log('Page1: Adding initial data...')
+    await page1.locator('#cell-A1').click()
+    await page1.locator('#cell-A1').fill('10')
+    await page1.locator('#cell-A1').press('Tab')
+
+    await page1.locator('#cell-B1').fill('20')
+    await page1.locator('#cell-B1').press('Tab')
+
+    await page1.locator('#cell-C1').fill('=A1+B1')
+    await page1.locator('#cell-C1').press('Enter')
+
+    // Wait for formula to calculate
+    await page1.waitForFunction(
+      () => document.querySelector('#cell-C1')?.value === '30',
+      { timeout: 5000 }
+    )
+
+    // Add more data in different cells
+    await page1.locator('#cell-A2').click()
+    await page1.locator('#cell-A2').fill('100')
+    await page1.locator('#cell-A2').press('Enter')
+
+    console.log('Page1: Initial data added. Now connecting Page2...')
+
+    // NOW Browser 2 connects (late joiner scenario)
+    const context2 = await browser.newContext()
+    const page2 = await context2.newPage()
+
+    page2.on('console', msg => console.log('Page2:', msg.text()))
+
+    await page2.goto(url)
+    await connectToSpreadsheet(page2, testTopic, 'webrtc')
+
+    await page2.waitForFunction(
+      () => document.getElementById('log').value.includes('Ready!'),
+      { timeout: 15000 }
+    )
+
+    console.log('Page2: Connected. Waiting for WebRTC and sync...')
+
+    // Wait for WebRTC connections
+    await waitForWebRTCConnection(page1, 60000)
+    await waitForWebRTCConnection(page2, 60000)
+
+    console.log('WebRTC connections established! Checking if Page2 received all data...')
+
+    // Give more time for Yjs sync to complete (gossipsub + Yjs processing)
+    await page2.waitForTimeout(5000)
+
+    // Debug: Check Yjs document state in Page2
+    const yjsState = await page2.evaluate(() => {
+      const doc = window.spreadsheetUI?.engine?.cells
+      if (!doc) { return 'No Yjs doc found' }
+      const cells = {}
+      for (const [key, value] of doc.entries()) {
+        cells[key] = {
+          value: value.get('value'),
+          formula: value.get('formula')
+        }
+      }
+      return cells
+    })
+    console.log('Page2 Yjs doc state:', yjsState)
+
+    // Browser 2 should see ALL the data that Browser 1 added
+    console.log('Verifying Page2 received all cells...')
+
+    // Check each cell value
+    const page2A1 = await page2.locator('#cell-A1').inputValue()
+    const page2B1 = await page2.locator('#cell-B1').inputValue()
+    const page2C1 = await page2.locator('#cell-C1').inputValue()
+    const page2A2 = await page2.locator('#cell-A2').inputValue()
+
+    console.log('Page2 values:', { A1: page2A1, B1: page2B1, C1: page2C1, A2: page2A2 })
+
+    // THE KEY ASSERTIONS - late joiner should have ALL the data
+    expect(page2A1).toBe('10')
+    expect(page2B1).toBe('20')
+    expect(page2C1).toBe('30') // Calculated formula result
+    expect(page2A2).toBe('100')
+
+    // Bonus: Verify formula is actually there (click cell to see formula in input)
+    await page2.locator('#cell-C1').click()
+    await page2.waitForTimeout(500) // Wait for focus handler
+    const page2C1WithFormula = await page2.locator('#cell-C1').inputValue()
+    expect(page2C1WithFormula).toBe('=A1+B1')
+
+    console.log('✅ Late joiner test passed! All data received.')
+
+    await context1.close()
+    await context2.close()
+  })
 })
