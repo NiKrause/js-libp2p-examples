@@ -639,6 +639,92 @@ export class SpreadsheetUI {
   }
 
   /**
+   * Navigate to a cell if the coordinate is valid
+   *
+   * @param nextCoord - Target cell coordinate
+   */
+  navigateToCell (nextCoord) {
+    if (nextCoord) {
+      const nextInput = document.getElementById(`cell-${nextCoord}`)
+      if (nextInput) {
+        nextInput.focus()
+      }
+    }
+  }
+
+  /**
+   * Handle Enter key in cell
+   *
+   * @param r - Row index
+   * @param c - Column index
+   * @returns Target coordinate or null
+   */
+  handleEnterKey (r, c) {
+    // Move to cell below (or stay if at bottom)
+    if (r < this.gridSize.rows - 1) {
+      return coordToA1(r + 1, c)
+    }
+    return null
+  }
+
+  /**
+   * Handle Tab key in cell
+   *
+   * @param e - Keyboard event
+   * @param r - Row index
+   * @param c - Column index
+   * @returns Target coordinate or null
+   */
+  handleTabKey (e, r, c) {
+    // Tab moves right, Shift+Tab moves left
+    if (e.shiftKey) {
+      if (c > 0) {
+        return coordToA1(r, c - 1)
+      }
+    } else {
+      if (c < this.gridSize.cols - 1) {
+        return coordToA1(r, c + 1)
+      }
+    }
+    return null
+  }
+
+  /**
+   * Handle arrow keys in cell
+   *
+   * @param e - Keyboard event
+   * @param r - Row index
+   * @param c - Column index
+   * @param input - Input element
+   * @returns Object with nextCoord and shouldNavigate
+   */
+  handleArrowKey (e, r, c, input) {
+    if (e.key === 'ArrowUp') {
+      if (r > 0) {
+        return { nextCoord: coordToA1(r - 1, c), shouldNavigate: true }
+      }
+    } else if (e.key === 'ArrowDown') {
+      if (r < this.gridSize.rows - 1) {
+        return { nextCoord: coordToA1(r + 1, c), shouldNavigate: true }
+      }
+    } else if (e.key === 'ArrowLeft') {
+      // Navigate left only if cursor is at the start of the text
+      const cursorPos = input.selectionStart
+      if (cursorPos === 0 && c > 0) {
+        return { nextCoord: coordToA1(r, c - 1), shouldNavigate: true }
+      }
+    } else if (e.key === 'ArrowRight') {
+      // Navigate right only if cursor is at the end of the text
+      const cursorPos = input.selectionStart
+      const textLength = input.value.length
+      if (cursorPos === textLength && c < this.gridSize.cols - 1) {
+        return { nextCoord: coordToA1(r, c + 1), shouldNavigate: true }
+      }
+    }
+    return { nextCoord: null, shouldNavigate: false }
+  }
+
+  /**
    * Handle keyboard navigation in cells
    *
    * @param e - Keyboard event
@@ -653,27 +739,11 @@ export class SpreadsheetUI {
     // Handle navigation keys
     if (e.key === 'Enter') {
       e.preventDefault()
-
-      // Blur will handle saving, so just navigate
-      // Move to cell below (or stay if at bottom)
-      if (r < this.gridSize.rows - 1) {
-        nextCoord = coordToA1(r + 1, c)
-      }
+      nextCoord = this.handleEnterKey(r, c)
       shouldNavigate = true
     } else if (e.key === 'Tab') {
       e.preventDefault()
-
-      // Tab moves right, Shift+Tab moves left
-      // Blur will handle saving
-      if (e.shiftKey) {
-        if (c > 0) {
-          nextCoord = coordToA1(r, c - 1)
-        }
-      } else {
-        if (c < this.gridSize.cols - 1) {
-          nextCoord = coordToA1(r, c + 1)
-        }
-      }
+      nextCoord = this.handleTabKey(e, r, c)
       shouldNavigate = true
     } else if (e.key === 'Escape') {
       // Escape key - revert changes and unfocus (show result, not formula)
@@ -681,45 +751,17 @@ export class SpreadsheetUI {
       const cell = this.engine.getCell(coord)
       input.value = cell.value || ''
       input.blur()
-    } else if (e.key === 'ArrowUp') {
-      // Always navigate up (doesn't interfere with text editing)
+      return
+    } else if (e.key.startsWith('Arrow')) {
       e.preventDefault()
-      if (r > 0) {
-        nextCoord = coordToA1(r - 1, c)
-        shouldNavigate = true
-      }
-    } else if (e.key === 'ArrowDown') {
-      // Always navigate down (doesn't interfere with text editing)
-      e.preventDefault()
-      if (r < this.gridSize.rows - 1) {
-        nextCoord = coordToA1(r + 1, c)
-        shouldNavigate = true
-      }
-    } else if (e.key === 'ArrowLeft') {
-      // Navigate left only if cursor is at the start of the text
-      const cursorPos = input.selectionStart
-      if (cursorPos === 0 && c > 0) {
-        e.preventDefault()
-        nextCoord = coordToA1(r, c - 1)
-        shouldNavigate = true
-      }
-    } else if (e.key === 'ArrowRight') {
-      // Navigate right only if cursor is at the end of the text
-      const cursorPos = input.selectionStart
-      const textLength = input.value.length
-      if (cursorPos === textLength && c < this.gridSize.cols - 1) {
-        e.preventDefault()
-        nextCoord = coordToA1(r, c + 1)
-        shouldNavigate = true
-      }
+      const result = this.handleArrowKey(e, r, c, input)
+      nextCoord = result.nextCoord
+      shouldNavigate = result.shouldNavigate
     }
 
     // Move to next cell if determined
-    if (shouldNavigate && nextCoord) {
-      const nextInput = document.getElementById(`cell-${nextCoord}`)
-      if (nextInput) {
-        nextInput.focus()
-      }
+    if (shouldNavigate) {
+      this.navigateToCell(nextCoord)
     }
   }
 

@@ -14,7 +14,11 @@ import { webSockets } from '@libp2p/websockets'
 import { createLibp2p } from 'libp2p'
 import * as Y from 'yjs'
 import { DEBUG, TIMEOUTS, INTERVALS } from './constants.js'
-import { webrtcPeerExchange } from './peer-exchange.js'
+import {
+  getTransportType,
+  updatePeerDisplay,
+  updateMultiaddrDisplay
+} from './peer-display.js'
 import {
   SpreadsheetEngine,
   SpreadsheetUI
@@ -30,7 +34,6 @@ const logEl = document.getElementById('log')
 const peersEl = document.getElementById('peers')
 const peerCountEl = document.getElementById('peer-count')
 const peerListEl = document.getElementById('peer-list')
-const debugConnectionsBtn = document.getElementById('debug-connections')
 const multiaddrsEl = document.getElementById('multiaddrs')
 const multiaddrSelectEl = document.getElementById('multiaddr-select')
 const peerIdDisplayEl = document.getElementById('peer-id-display')
@@ -68,213 +71,6 @@ const log = (message, isError = false) => {
   }
 }
 
-/**
- * Updates the multiaddress display with current addresses.
- */
-const updateMultiaddrDisplay = () => {
-  if (!libp2pNode) {
-    return
-  }
-
-  const multiaddrs = libp2pNode.getMultiaddrs()
-
-  // Always show the section, even if empty
-  multiaddrsEl.style.display = 'block'
-
-  if (multiaddrs.length > 0) {
-    multiaddrSelectEl.innerHTML = ''
-    for (const ma of multiaddrs) {
-      const option = document.createElement('option')
-      const maStr = ma.toString()
-
-      // Add label for relay addresses
-      if (maStr.includes('/p2p-circuit')) {
-        option.textContent = `${maStr} (relay)`
-      } else if (maStr.includes('/webrtc')) {
-        option.textContent = `${maStr} (WebRTC)`
-      } else if (maStr.includes('/ws')) {
-        option.textContent = `${maStr} (WebSocket)`
-      } else {
-        option.textContent = maStr
-      }
-
-      multiaddrSelectEl.appendChild(option)
-    }
-  } else {
-    // Show message when no addresses yet
-    multiaddrSelectEl.innerHTML = '<option disabled>Waiting for addresses (relay reservation in progress...)</option>'
-  }
-}
-
-/**
- * Debug function to log all current connections in detail.
- */
-const debugConnections = () => {
-  if (!libp2pNode) {
-    log('No libp2p node active')
-    return
-  }
-
-  const connections = libp2pNode.getConnections()
-  log(`=== DEBUG: ${connections.length} total connection(s) ===`)
-  
-  const peerMap = new Map()
-  
-  for (const conn of connections) {
-    const peerId = conn.remotePeer.toString()
-    const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
-    
-    if (!peerMap.has(peerId)) {
-      peerMap.set(peerId, [])
-    }
-    
-    const addr = conn.remoteAddr.toString()
-    const direction = conn.direction || 'unknown'
-    const status = conn.status || 'unknown'
-    const connId = conn.id ? conn.id.slice(0, 8) : 'unknown'
-    
-    // Determine transport
-    let transport = 'unknown'
-    if (addr.includes('/p2p-circuit')) {
-      transport = 'relay'
-    } else if (addr.includes('/webrtc')) {
-      transport = 'webrtc'
-    } else if (addr.includes('/ws')) {
-      transport = 'websocket'
-    }
-    
-    peerMap.get(peerId).push({ transport, direction, status, connId, addr })
-  }
-  
-  for (const [peerId, conns] of peerMap) {
-    const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
-    log(`Peer: ${peerIdShort}`)
-    conns.forEach((conn, idx) => {
-      const arrow = conn.direction === 'inbound' ? '←' : conn.direction === 'outbound' ? '→' : '•'
-      log(`  ${idx + 1}. ${conn.transport} ${arrow} [${conn.connId}] ${conn.status}`)
-      if (DEBUG) {
-        console.log(`     ${conn.addr}`)
-      }
-    })
-  }
-  
-  log('=== END DEBUG ===')
-}
-
-/**
- * Updates the peer display UI with current connections.
- */
-const updatePeerDisplay = () => {
-  if (!libp2pNode) {
-    return
-  }
-
-  const connections = libp2pNode.getConnections()
-  const peerMap = new Map()
-
-  // Group connections by peer
-  for (const conn of connections) {
-    const peerId = conn.remotePeer.toString()
-    if (!peerMap.has(peerId)) {
-      peerMap.set(peerId, [])
-    }
-
-    const remoteAddr = conn.remoteAddr.toString()
-    let transport = 'unknown'
-
-    // Check relay FIRST - relay connections can contain /webrtc in their path after /p2p-circuit
-    if (remoteAddr.includes('/p2p-circuit')) {
-      transport = 'relay'
-    } else if (remoteAddr.includes('/webrtc')) {
-      // Direct WebRTC connection (not relayed)
-      transport = 'webrtc'
-    } else if (remoteAddr.includes('/wss') || remoteAddr.includes('/tls/ws')) {
-      transport = 'websocket-secure'
-    } else if (remoteAddr.includes('/ws')) {
-      transport = 'websocket'
-    }
-
-    // Gather connection metadata for tooltip
-    const direction = conn.direction || 'unknown'
-    const status = conn.status || 'unknown'
-    const timeline = conn.timeline || {}
-    const connId = conn.id || 'unknown'
-
-    peerMap.get(peerId).push({ 
-      transport, 
-      addr: remoteAddr, 
-      direction, 
-      status,
-      connId,
-      timeline
-    })
-  }
-
-  // Update count
-  peerCountEl.textContent = peerMap.size
-
-  // Show/hide peers section
-  if (peerMap.size > 0) {
-    peersEl.style.display = 'block'
-  } else {
-    peersEl.style.display = 'none'
-  }
-
-  // Update peer list
-  peerListEl.innerHTML = ''
-  for (const [peerId, transports] of peerMap) {
-    const peerDiv = document.createElement('div')
-    peerDiv.className = 'peer'
-
-    const peerIdSpan = document.createElement('div')
-    peerIdSpan.className = 'peer-id'
-    peerIdSpan.textContent = `${peerId.slice(0, 8)}...${peerId.slice(-4)}`
-    peerIdSpan.title = peerId // Full peer ID on hover
-    peerDiv.appendChild(peerIdSpan)
-
-    const transportDiv = document.createElement('div')
-
-    // Group identical transport+direction combinations and count them
-    const transportGroups = new Map()
-    for (const conn of transports) {
-      const key = `${conn.transport}-${conn.direction}`
-      if (!transportGroups.has(key)) {
-        transportGroups.set(key, [])
-      }
-      transportGroups.get(key).push(conn)
-    }
-
-    // Show each unique transport+direction with count
-    for (const [key, conns] of transportGroups) {
-      const { transport, direction } = conns[0]
-      const badge = document.createElement('span')
-      badge.className = `transport ${transport}`
-      
-      // Add direction indicator to badge text
-      const directionIcon = direction === 'inbound' ? '←' : direction === 'outbound' ? '→' : '•'
-      const countText = conns.length > 1 ? ` ×${conns.length}` : ''
-      badge.textContent = `${transport} ${directionIcon}${countText}`
-      
-      // Enhanced tooltip with connection details for all connections in this group
-      const tooltipLines = [`${transport} (${direction}) - ${conns.length} connection(s)`, '']
-      conns.forEach((conn, idx) => {
-        tooltipLines.push(`Connection ${idx + 1}:`)
-        tooltipLines.push(`  Address: ${conn.addr}`)
-        tooltipLines.push(`  Status: ${conn.status}`)
-        tooltipLines.push(`  ID: ${conn.connId}`)
-        tooltipLines.push('')
-      })
-      badge.title = tooltipLines.join('\n')
-      
-      transportDiv.appendChild(badge)
-    }
-
-    peerDiv.appendChild(transportDiv)
-
-    peerListEl.appendChild(peerDiv)
-  }
-}
-
 // Connect function with bootstrap address selection
 async function connectWithTransports (mode = 'webrtc') {
   if (libp2pNode) {
@@ -300,7 +96,6 @@ async function connectWithTransports (mode = 'webrtc') {
     // Fetch relay addresses dynamically
     let bootstrapAddresses = []
     try {
-      log('Fetching relay addresses from HTTP API...')
       const response = await fetch('http://localhost:9094/api/addresses')
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -309,31 +104,25 @@ async function connectWithTransports (mode = 'webrtc') {
 
       if (mode === 'webrtc') {
         bootstrapAddresses = addresses.webrtcDirect
-        log(`Found ${bootstrapAddresses.length} WebRTC-Direct address(es)`)
       } else {
         bootstrapAddresses = addresses.websocket
-        log(`Found ${bootstrapAddresses.length} WebSocket address(es)`)
       }
 
       if (bootstrapAddresses.length === 0) {
         throw new Error(`No ${mode} addresses available from relay`)
       }
 
-      // Log the addresses we'll use
-      bootstrapAddresses.forEach(addr => {
-        log(`  → ${addr}`)
-      })
+      log(`Found ${bootstrapAddresses.length} relay ${mode} address(es)`)
     } catch (err) {
       log(`⚠️ Failed to fetch relay addresses: ${err.message}`, true)
       // Fallback to hardcoded WebSocket addresses from bootstrappers.js
       bootstrapAddresses = (await import('./bootstrappers.js')).default
-      log(`Using fallback addresses (${bootstrapAddresses.length} address(es))`)
+      log(`Using ${bootstrapAddresses.length} fallback address(es)`)
     }
 
     connectionModeEl.textContent = mode === 'webrtc'
       ? '🔄 Connecting via WebRTC-Direct...'
       : '🔄 Connecting via WebSocket...'
-    log('Creating libp2p node...')
 
     // ALWAYS include ALL transports (never disable any)
     const transports = [
@@ -394,10 +183,6 @@ async function connectWithTransports (mode = 'webrtc') {
         pubsub: gossipsub({
           emitSelf: false,
           allowPublishToZeroTopicPeers: true
-        }),
-        webrtcPeerExchange: webrtcPeerExchange({
-          enabled: true,  // Always enabled
-          debug: DEBUG
         })
       }
     })
@@ -408,15 +193,10 @@ async function connectWithTransports (mode = 'webrtc') {
     peerIdValueEl.textContent = peerIdStr
     peerIdDisplayEl.style.display = 'block'
 
-    log(
-      `libp2p node created with id: ${peerIdStr.slice(0, 8)}...${peerIdStr.slice(-4)}`
-    )
-    log(`Connecting to bootstrap relay via ${mode === 'webrtc' ? 'WebRTC-Direct' : 'WebSocket'}...`)
+    log(`Node ID: ${peerIdStr.slice(0, 8)}...${peerIdStr.slice(-4)}`)
 
     // Expose for testing
     window.libp2pNode = libp2pNode
-
-    log('📡 Peer exchange service enabled (all transports active)')
 
     // Update connection mode display
     connectionModeEl.textContent = mode === 'webrtc'
@@ -429,7 +209,6 @@ async function connectWithTransports (mode = 'webrtc') {
     spreadsheetEngine = new SpreadsheetEngine(yjsDoc)
 
     // Set up Yjs provider with libp2p
-    log(`Setting up Yjs provider with topic: ${topic}`)
     provider = new Libp2pProvider(topic, yjsDoc, libp2pNode)
 
     // Create and initialize spreadsheet UI
@@ -439,13 +218,11 @@ async function connectWithTransports (mode = 'webrtc') {
     // Expose for testing
     window.spreadsheetUI = spreadsheetUI
 
-    log(
-      'Ready! Open this page in another browser tab or window to collaborate.'
-    )
+    log('Ready! Open this page in another tab to collaborate.')
 
     // Initial display updates
-    updatePeerDisplay()
-    updateMultiaddrDisplay()
+    updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
+    updateMultiaddrDisplay(libp2pNode, multiaddrsEl, multiaddrSelectEl)
 
     // Auto-dial discovered peers
     libp2pNode.addEventListener('peer:discovery', async (evt) => {
@@ -457,13 +234,8 @@ async function connectWithTransports (mode = 'webrtc') {
 
       try {
         await libp2pNode.dial(peerId)
-        if (DEBUG) {
-          log(`Connected to peer: ${peerId.toString().slice(0, 8)}...${peerId.toString().slice(-4)}`)
-        }
       } catch (err) {
-        if (DEBUG) {
-          console.log('Dial failed:', err.message)
-        }
+        // Dial failures are normal and logged elsewhere
       }
     })
 
@@ -476,17 +248,8 @@ async function connectWithTransports (mode = 'webrtc') {
       const direction = connection.direction || 'unknown'
       const connId = connection.id || 'unknown'
 
-      // Determine transport type (check relay FIRST)
-      let transport = 'unknown'
-      if (addr.includes('/p2p-circuit')) {
-        transport = 'relay'
-      } else if (addr.includes('/webrtc')) {
-        transport = 'webrtc'
-      } else if (addr.includes('/wss') || addr.includes('/tls/ws')) {
-        transport = 'websocket-secure'
-      } else if (addr.includes('/ws')) {
-        transport = 'websocket'
-      }
+      // Determine transport type
+      const transport = getTransportType(addr)
 
       // Check if this is a WebRTC upgrade
       const previousTransports = peerTransports.get(peerId)
@@ -496,7 +259,12 @@ async function connectWithTransports (mode = 'webrtc') {
         // WebRTC upgrade happened!
         log(`🎉 WebRTC upgrade! ${peerIdShort} upgraded to direct connection`)
       } else {
-        const directionArrow = direction === 'inbound' ? '←' : direction === 'outbound' ? '→' : '•'
+        let directionArrow = '•'
+        if (direction === 'inbound') {
+          directionArrow = '←'
+        } else if (direction === 'outbound') {
+          directionArrow = '→'
+        }
         log(`Connected to ${peerIdShort} via ${transport} ${directionArrow} [${connId.slice(0, 8)}]`)
       }
 
@@ -506,18 +274,7 @@ async function connectWithTransports (mode = 'webrtc') {
       }
       peerTransports.get(peerId).add(transport)
 
-      // Peer exchange is now handled automatically by the webrtcPeerExchange service
-
-      // Log full details in debug mode
-      if (DEBUG) {
-        console.log(`  Connection opened:`)
-        console.log(`    Address: ${addr}`)
-        console.log(`    Direction: ${direction}`)
-        console.log(`    Connection ID: ${connId}`)
-        console.log(`    Status: ${connection.status}`)
-      }
-
-      updatePeerDisplay()
+      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
     })
 
     // Listen for individual connection closures
@@ -527,21 +284,19 @@ async function connectWithTransports (mode = 'webrtc') {
       const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
       const addr = connection.remoteAddr.toString()
       const direction = connection.direction || 'unknown'
-      
+
       // Determine transport type
-      let transport = 'unknown'
-      if (addr.includes('/p2p-circuit')) {
-        transport = 'relay'
-      } else if (addr.includes('/webrtc')) {
-        transport = 'webrtc'
-      } else if (addr.includes('/ws')) {
-        transport = 'websocket'
+      const transport = getTransportType(addr)
+
+      let directionArrow = '•'
+      if (direction === 'inbound') {
+        directionArrow = '←'
+      } else if (direction === 'outbound') {
+        directionArrow = '→'
       }
-      
-      const directionArrow = direction === 'inbound' ? '←' : direction === 'outbound' ? '→' : '•'
       log(`Connection closed: ${peerIdShort} ${transport} ${directionArrow}`)
-      
-      updatePeerDisplay()
+
+      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
     })
 
     libp2pNode.addEventListener('peer:disconnect', (evt) => {
@@ -552,22 +307,19 @@ async function connectWithTransports (mode = 'webrtc') {
       peerTransports.delete(peerId)
 
       log(`Fully disconnected from peer: ${peerIdShort}`)
-      updatePeerDisplay()
+      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
     })
 
     // Update multiaddrs when they change (e.g., relay reservation obtained)
     libp2pNode.addEventListener('self:peer:update', () => {
-      updateMultiaddrDisplay()
-      if (DEBUG) {
-        log('Multiaddrs updated')
-      }
+      updateMultiaddrDisplay(libp2pNode, multiaddrsEl, multiaddrSelectEl)
     })
 
     // Periodically update both multiaddrs AND peer display
     // (to catch any state changes that didn't trigger events)
     const updateInterval = setInterval(() => {
-      updateMultiaddrDisplay()
-      updatePeerDisplay()
+      updateMultiaddrDisplay(libp2pNode, multiaddrsEl, multiaddrSelectEl)
+      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
     }, 2000) // Check every 2 seconds
 
     // Store interval ID for cleanup
@@ -596,13 +348,6 @@ async function connectWithTransports (mode = 'webrtc') {
 // Button handlers - specify bootstrap mode
 connectWebRTCBtn.onclick = () => connectWithTransports('webrtc')
 connectWebSocketBtn.onclick = () => connectWithTransports('websocket')
-
-// Debug button handler
-debugConnectionsBtn.onclick = () => {
-  debugConnections()
-  updatePeerDisplay()
-  updateMultiaddrDisplay()
-}
 
 /**
  * Cleanup resources on page unload.

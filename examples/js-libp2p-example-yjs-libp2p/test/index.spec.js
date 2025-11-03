@@ -1,68 +1,12 @@
 /* eslint-disable no-console */
 
 import { test, expect } from '@playwright/test'
+import {
+  connectToSpreadsheet,
+  waitForWebRTCConnection
+} from './helpers.js'
 
 const url = 'http://localhost:5173'
-
-// Helper to connect a page to the spreadsheet
-async function connectToSpreadsheet (page, topic = 'test-topic', mode = 'webrtc') {
-  await page.fill('#topic', topic)
-
-  // Click the appropriate connect button based on mode
-  if (mode === 'websocket') {
-    await page.click('#connect-websocket')
-  } else {
-    await page.click('#connect-webrtc')
-  }
-
-  // Wait for spreadsheet to appear and be ready
-  await page.waitForFunction(
-    () => document.getElementById('spreadsheet').style.display !== 'none' &&
-          document.getElementById('formula-input').disabled === false,
-    { timeout: 15000 }
-  )
-}
-
-// Helper to wait for any peer connection
-async function waitForPeerConnection (page, timeout = 60000) {
-  // Wait for peer count to be at least 2 (including relay)
-  await page.waitForFunction(
-    () => {
-      const peerCountEl = document.querySelector('#peer-count')
-      return peerCountEl && parseInt(peerCountEl.textContent) >= 2
-    },
-    { timeout }
-  )
-
-  console.log('Peer connection established!')
-}
-
-// Helper to wait for WebRTC connection (green badge)
-async function waitForWebRTCConnection (page, timeout = 60000) {
-  // First wait for basic peer connection
-  await waitForPeerConnection(page, timeout)
-
-  console.log('Peer connection reached 2+, now waiting for WebRTC badge...')
-
-  // Debug: Check what badges exist before waiting
-  const badgesBeforeWait = await page.evaluate(() => {
-    const badges = Array.from(document.querySelectorAll('.transport'))
-    return badges.map(b => ({ classes: b.className, text: b.textContent }))
-  })
-  console.log('Existing transport badges:', JSON.stringify(badgesBeforeWait))
-
-  // Then wait for WebRTC transport badge to appear (green badge)
-  await page.waitForFunction(
-    () => {
-      const webrtcBadge = document.querySelector('.transport.webrtc')
-      console.log('Checking for WebRTC badge, found:', webrtcBadge)
-      return webrtcBadge !== null
-    },
-    { timeout }
-  )
-
-  console.log('WebRTC connection established!')
-}
 
 test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
   test.setTimeout(120000) // Increase timeout for all tests to 2 minutes
