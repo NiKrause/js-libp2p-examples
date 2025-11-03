@@ -32,16 +32,37 @@ export async function connectToSpreadsheet (page, topic = 'test-topic', mode = '
  * @param {number} [timeout] - Timeout in milliseconds
  */
 export async function waitForPeerConnection (page, timeout = 60000) {
-  // Wait for peer count to be at least 2 (including relay)
-  await page.waitForFunction(
-    () => {
-      const peerCountEl = document.querySelector('#peer-count')
-      return peerCountEl && parseInt(peerCountEl.textContent) >= 2
-    },
-    { timeout }
-  )
-
-  console.log('Peer connection established!')
+  // Increase timeout for CI environments where connections are slower
+  const isCI = Boolean(process.env.CI)
+  const effectiveTimeout = isCI ? Math.max(timeout, 180000) : timeout // 3 min for CI
+  
+  console.log(`Waiting for peer connection (timeout: ${effectiveTimeout}ms, CI: ${isCI})`)
+  
+  try {
+    // Wait for peer count to be at least 2 (including relay)
+    await page.waitForFunction(
+      () => {
+        const peerCountEl = document.querySelector('#peer-count')
+        return peerCountEl && parseInt(peerCountEl.textContent) >= 2
+      },
+      { timeout: effectiveTimeout }
+    )
+    
+    console.log('Peer connection established!')
+  } catch (error) {
+    // If timeout, capture diagnostic info
+    const diagnostics = await page.evaluate(() => {
+      return {
+        peerCount: document.querySelector('#peer-count')?.textContent,
+        connectionMode: document.querySelector('#connection-mode')?.textContent,
+        peerId: document.querySelector('#peer-id-value')?.textContent,
+        logContent: document.getElementById('log')?.value?.split('\n').slice(-10).join('\n')
+      }
+    })
+    
+    console.error('Failed to establish peer connection. Diagnostics:', diagnostics)
+    throw error
+  }
 }
 
 /**
