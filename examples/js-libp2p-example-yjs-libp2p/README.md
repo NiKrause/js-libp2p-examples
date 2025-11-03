@@ -169,6 +169,7 @@ The provider uses three message types:
 - Check out the [general libp2p documentation](https://docs.libp2p.io) for tips, how-tos and more
 - Read the [libp2p specs](https://github.com/libp2p/specs)
 - Ask a question on the [js-libp2p discussion board](https://github.com/libp2p/js-libp2p/discussions)
+- Read the [Yjs documentation](https://docs.yjs.dev/) for CRDT and collaborative editing concepts
 
 ## License
 
