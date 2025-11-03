@@ -783,7 +783,7 @@ test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
   })
 })
 
-// Separate test suite for late joiner test due to timing/resource conflicts 
+// Separate test suite for late joiner test due to timing/resource conflicts
 // TODO: This test is working when running isolated, but fails when running with other tests.
 test.describe.skip('Collaborative Spreadsheet - Late Joiner', () => {
   test.setTimeout(process.env.CI ? 300000 : 180000) // 5 min for CI, 3 min for local
@@ -908,7 +908,7 @@ test.describe.skip('Collaborative Spreadsheet - Late Joiner', () => {
         await window.libp2pNode.stop()
       }
     }).catch(() => {}) // Ignore errors if already stopped
-    
+
     await page2.evaluate(async () => {
       if (window.libp2pNode) {
         await window.libp2pNode.stop()
@@ -917,7 +917,7 @@ test.describe.skip('Collaborative Spreadsheet - Late Joiner', () => {
 
     await context1.close()
     await context2.close()
-    
+
     // Give extra time for cleanup
     await new Promise(resolve => setTimeout(resolve, 1000))
   })
