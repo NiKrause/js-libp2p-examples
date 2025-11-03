@@ -27,9 +27,11 @@
 
 ## Overview
 
-This example demonstrates how to create a Yjs connection provider using libp2p instead of the standard y-webrtc connector. It showcases:
+This example demonstrates how to create a [Yjs connection provider](https://docs.yjs.dev/ecosystem/connection-provider) using libp2p. The `yjs-libp2p-provider.js` file implements a custom provider that integrates libp2p's networking capabilities with Yjs, similar to how the standard [y-webrtc](https://github.com/yjs/y-webrtc) and [y-websocket](https://github.com/yjs/y-websocket) providers work, but with more control over the peer-to-peer networking stack.
 
-- **Custom Yjs Provider**: A libp2p-based connection provider for Yjs
+Key features:
+
+- **Custom Yjs Provider**: A libp2p-based connection provider for Yjs (`yjs-libp2p-provider.js`)
 - **WebRTC Support**: Direct peer-to-peer connections using WebRTC
 - **Circuit Relay**: NAT traversal via relay servers
 - **AutoNAT**: Automatic NAT detection
