@@ -30,6 +30,7 @@ const logEl = document.getElementById('log')
 const peersEl = document.getElementById('peers')
 const peerCountEl = document.getElementById('peer-count')
 const peerListEl = document.getElementById('peer-list')
+const debugConnectionsBtn = document.getElementById('debug-connections')
 const multiaddrsEl = document.getElementById('multiaddrs')
 const multiaddrSelectEl = document.getElementById('multiaddr-select')
 const peerIdDisplayEl = document.getElementById('peer-id-display')
@@ -106,6 +107,61 @@ const updateMultiaddrDisplay = () => {
 }
 
 /**
+ * Debug function to log all current connections in detail.
+ */
+const debugConnections = () => {
+  if (!libp2pNode) {
+    log('No libp2p node active')
+    return
+  }
+
+  const connections = libp2pNode.getConnections()
+  log(`=== DEBUG: ${connections.length} total connection(s) ===`)
+  
+  const peerMap = new Map()
+  
+  for (const conn of connections) {
+    const peerId = conn.remotePeer.toString()
+    const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
+    
+    if (!peerMap.has(peerId)) {
+      peerMap.set(peerId, [])
+    }
+    
+    const addr = conn.remoteAddr.toString()
+    const direction = conn.direction || 'unknown'
+    const status = conn.status || 'unknown'
+    const connId = conn.id ? conn.id.slice(0, 8) : 'unknown'
+    
+    // Determine transport
+    let transport = 'unknown'
+    if (addr.includes('/p2p-circuit')) {
+      transport = 'relay'
+    } else if (addr.includes('/webrtc')) {
+      transport = 'webrtc'
+    } else if (addr.includes('/ws')) {
+      transport = 'websocket'
+    }
+    
+    peerMap.get(peerId).push({ transport, direction, status, connId, addr })
+  }
+  
+  for (const [peerId, conns] of peerMap) {
+    const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
+    log(`Peer: ${peerIdShort}`)
+    conns.forEach((conn, idx) => {
+      const arrow = conn.direction === 'inbound' ? '←' : conn.direction === 'outbound' ? '→' : '•'
+      log(`  ${idx + 1}. ${conn.transport} ${arrow} [${conn.connId}] ${conn.status}`)
+      if (DEBUG) {
+        console.log(`     ${conn.addr}`)
+      }
+    })
+  }
+  
+  log('=== END DEBUG ===')
+}
+
+/**
  * Updates the peer display UI with current connections.
  */
 const updatePeerDisplay = () => {
@@ -126,18 +182,32 @@ const updatePeerDisplay = () => {
     const remoteAddr = conn.remoteAddr.toString()
     let transport = 'unknown'
 
-    // Check WebRTC first - WebRTC addresses can contain /p2p-circuit but are still direct connections
-    if (remoteAddr.includes('/webrtc')) {
-      transport = 'webrtc'
-    } else if (remoteAddr.includes('/p2p-circuit')) {
+    // Check relay FIRST - relay connections can contain /webrtc in their path after /p2p-circuit
+    if (remoteAddr.includes('/p2p-circuit')) {
       transport = 'relay'
+    } else if (remoteAddr.includes('/webrtc')) {
+      // Direct WebRTC connection (not relayed)
+      transport = 'webrtc'
     } else if (remoteAddr.includes('/wss') || remoteAddr.includes('/tls/ws')) {
       transport = 'websocket-secure'
     } else if (remoteAddr.includes('/ws')) {
       transport = 'websocket'
     }
 
-    peerMap.get(peerId).push({ transport, addr: remoteAddr })
+    // Gather connection metadata for tooltip
+    const direction = conn.direction || 'unknown'
+    const status = conn.status || 'unknown'
+    const timeline = conn.timeline || {}
+    const connId = conn.id || 'unknown'
+
+    peerMap.get(peerId).push({ 
+      transport, 
+      addr: remoteAddr, 
+      direction, 
+      status,
+      connId,
+      timeline
+    })
   }
 
   // Update count
@@ -164,12 +234,38 @@ const updatePeerDisplay = () => {
 
     const transportDiv = document.createElement('div')
 
-    // Show each connection with its transport
-    for (const { transport, addr } of transports) {
+    // Group identical transport+direction combinations and count them
+    const transportGroups = new Map()
+    for (const conn of transports) {
+      const key = `${conn.transport}-${conn.direction}`
+      if (!transportGroups.has(key)) {
+        transportGroups.set(key, [])
+      }
+      transportGroups.get(key).push(conn)
+    }
+
+    // Show each unique transport+direction with count
+    for (const [key, conns] of transportGroups) {
+      const { transport, direction } = conns[0]
       const badge = document.createElement('span')
       badge.className = `transport ${transport}`
-      badge.textContent = transport
-      badge.title = addr // Show full address on hover
+      
+      // Add direction indicator to badge text
+      const directionIcon = direction === 'inbound' ? '←' : direction === 'outbound' ? '→' : '•'
+      const countText = conns.length > 1 ? ` ×${conns.length}` : ''
+      badge.textContent = `${transport} ${directionIcon}${countText}`
+      
+      // Enhanced tooltip with connection details for all connections in this group
+      const tooltipLines = [`${transport} (${direction}) - ${conns.length} connection(s)`, '']
+      conns.forEach((conn, idx) => {
+        tooltipLines.push(`Connection ${idx + 1}:`)
+        tooltipLines.push(`  Address: ${conn.addr}`)
+        tooltipLines.push(`  Status: ${conn.status}`)
+        tooltipLines.push(`  ID: ${conn.connId}`)
+        tooltipLines.push('')
+      })
+      badge.title = tooltipLines.join('\n')
+      
       transportDiv.appendChild(badge)
     }
 
@@ -377,13 +473,17 @@ async function connectWithTransports (mode = 'webrtc') {
       const peerId = connection.remotePeer.toString()
       const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
       const addr = connection.remoteAddr.toString()
+      const direction = connection.direction || 'unknown'
+      const connId = connection.id || 'unknown'
 
-      // Determine transport type
+      // Determine transport type (check relay FIRST)
       let transport = 'unknown'
-      if (addr.includes('/webrtc')) {
-        transport = 'webrtc'
-      } else if (addr.includes('/p2p-circuit')) {
+      if (addr.includes('/p2p-circuit')) {
         transport = 'relay'
+      } else if (addr.includes('/webrtc')) {
+        transport = 'webrtc'
+      } else if (addr.includes('/wss') || addr.includes('/tls/ws')) {
+        transport = 'websocket-secure'
       } else if (addr.includes('/ws')) {
         transport = 'websocket'
       }
@@ -396,7 +496,8 @@ async function connectWithTransports (mode = 'webrtc') {
         // WebRTC upgrade happened!
         log(`🎉 WebRTC upgrade! ${peerIdShort} upgraded to direct connection`)
       } else {
-        log(`Connected to ${peerIdShort} via ${transport}`)
+        const directionArrow = direction === 'inbound' ? '←' : direction === 'outbound' ? '→' : '•'
+        log(`Connected to ${peerIdShort} via ${transport} ${directionArrow} [${connId.slice(0, 8)}]`)
       }
 
       // Update transport tracking
@@ -407,11 +508,39 @@ async function connectWithTransports (mode = 'webrtc') {
 
       // Peer exchange is now handled automatically by the webrtcPeerExchange service
 
-      // Log full multiaddr in debug mode
+      // Log full details in debug mode
       if (DEBUG) {
-        console.log(`  Connection opened: ${addr}`)
+        console.log(`  Connection opened:`)
+        console.log(`    Address: ${addr}`)
+        console.log(`    Direction: ${direction}`)
+        console.log(`    Connection ID: ${connId}`)
+        console.log(`    Status: ${connection.status}`)
       }
 
+      updatePeerDisplay()
+    })
+
+    // Listen for individual connection closures
+    libp2pNode.addEventListener('connection:close', (evt) => {
+      const connection = evt.detail
+      const peerId = connection.remotePeer.toString()
+      const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
+      const addr = connection.remoteAddr.toString()
+      const direction = connection.direction || 'unknown'
+      
+      // Determine transport type
+      let transport = 'unknown'
+      if (addr.includes('/p2p-circuit')) {
+        transport = 'relay'
+      } else if (addr.includes('/webrtc')) {
+        transport = 'webrtc'
+      } else if (addr.includes('/ws')) {
+        transport = 'websocket'
+      }
+      
+      const directionArrow = direction === 'inbound' ? '←' : direction === 'outbound' ? '→' : '•'
+      log(`Connection closed: ${peerIdShort} ${transport} ${directionArrow}`)
+      
       updatePeerDisplay()
     })
 
@@ -422,7 +551,7 @@ async function connectWithTransports (mode = 'webrtc') {
       // Clean up transport tracking
       peerTransports.delete(peerId)
 
-      log(`Disconnected from peer: ${peerIdShort}`)
+      log(`Fully disconnected from peer: ${peerIdShort}`)
       updatePeerDisplay()
     })
 
@@ -434,13 +563,15 @@ async function connectWithTransports (mode = 'webrtc') {
       }
     })
 
-    // Periodically check for new multiaddrs (relay reservation can take time)
-    const multiaddrUpdateInterval = setInterval(() => {
+    // Periodically update both multiaddrs AND peer display
+    // (to catch any state changes that didn't trigger events)
+    const updateInterval = setInterval(() => {
       updateMultiaddrDisplay()
+      updatePeerDisplay()
     }, 2000) // Check every 2 seconds
 
     // Store interval ID for cleanup
-    window.multiaddrUpdateInterval = multiaddrUpdateInterval
+    window.updateInterval = updateInterval
   } catch (err) {
     log(`Error: ${err.message}`, true)
 
@@ -465,6 +596,13 @@ async function connectWithTransports (mode = 'webrtc') {
 // Button handlers - specify bootstrap mode
 connectWebRTCBtn.onclick = () => connectWithTransports('webrtc')
 connectWebSocketBtn.onclick = () => connectWithTransports('websocket')
+
+// Debug button handler
+debugConnectionsBtn.onclick = () => {
+  debugConnections()
+  updatePeerDisplay()
+  updateMultiaddrDisplay()
+}
 
 /**
  * Cleanup resources on page unload.
