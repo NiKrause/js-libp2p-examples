@@ -1,5 +1,24 @@
 /* eslint-disable no-console */
 
+// Import webrtc-adapter first to ensure cross-browser WebRTC compatibility
+// This patches WebRTC APIs for Firefox, Safari, and older browsers
+import adapter from 'webrtc-adapter'
+
+// Log adapter.js info to verify it's loaded
+console.log('🔧 webrtc-adapter loaded:', {
+  browserDetails: adapter.browserDetails,
+  browserName: adapter.browserDetails.browser,
+  browserVersion: adapter.browserDetails.version
+})
+
+// CRITICAL: Import debug module BEFORE libp2p modules!
+// This patches RTCPeerConnection before libp2p captures it
+// TEMPORARILY DISABLED TO TEST IF FIREFOX PREFERENCES ALONE ARE SUFFICIENT
+// import {
+//   patchLibp2pWebRTCLogging,
+//   setupLibp2pEventLogging
+// } from './libp2p-webrtc-debug.js'
+
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
 import { autoNAT } from '@libp2p/autonat'
@@ -71,6 +90,9 @@ const log = (message, isError = false) => {
   }
 }
 
+// WebRTC debugging is now handled by libp2p-webrtc-debug.js module
+// which provides patchLibp2pWebRTCLogging() and setupLibp2pEventLogging()
+
 // Connect function with bootstrap address selection
 async function connectWithTransports (mode = 'webrtc') {
   if (libp2pNode) {
@@ -124,22 +146,29 @@ async function connectWithTransports (mode = 'webrtc') {
       ? '🔄 Connecting via WebRTC-Direct...'
       : '🔄 Connecting via WebSocket...'
 
+    // Note: RTCPeerConnection patching happens automatically on module import
+    // See libp2p-webrtc-debug.js for auto-patching on import
+
     // ALWAYS include ALL transports (never disable any)
     const transports = [
       webSockets(),
       webRTCDirect({
         rtcConfiguration: {
+          // STUN servers commented out to force host-only candidates for local testing
+          // This allows peers on the same network to connect directly
           iceServers: [
-            { urls: ['stun:stun.l.google.com:19302'] },
-            { urls: ['stun:stun1.l.google.com:19302'] }
+            // { urls: ['stun:stun.l.google.com:19302'] },
+            // { urls: ['stun:stun1.l.google.com:19302'] }
           ]
         }
       }),
       webRTC({
         rtcConfiguration: {
+          // STUN servers commented out to force host-only candidates for local testing
+          // This allows peers on the same network to connect directly
           iceServers: [
-            { urls: ['stun:stun.l.google.com:19302'] },
-            { urls: ['stun:stun1.l.google.com:19302'] }
+            // { urls: ['stun:stun.l.google.com:19302'] },
+            // { urls: ['stun:stun1.l.google.com:19302'] }
           ]
         }
       }),
@@ -165,6 +194,9 @@ async function connectWithTransports (mode = 'webrtc') {
         outboundUpgradeTimeout: TIMEOUTS.UPGRADE_OUTBOUND
       },
       connectionGater: {
+        // By default libp2p refuses to dial local/private addresses from the browser
+        // We need to explicitly allow this for local network connections
+        // See: https://github.com/libp2p/js-libp2p-examples/tree/main/examples/js-libp2p-example-webrtc-private-to-public
         denyDialMultiaddr: () => false
       },
       peerDiscovery: [
@@ -197,6 +229,10 @@ async function connectWithTransports (mode = 'webrtc') {
 
     // Expose for testing
     window.libp2pNode = libp2pNode
+
+    // Set up libp2p event logging for detailed diagnostics
+    // TEMPORARILY DISABLED TO TEST IF FIREFOX PREFERENCES ALONE ARE SUFFICIENT
+    // setupLibp2pEventLogging(libp2pNode)
 
     // Update connection mode display
     connectionModeEl.textContent = mode === 'webrtc'

@@ -237,6 +237,19 @@
       <select id="multiaddr-select" size="5"></select>
     </div>
 
+    <div style="margin-top: 1rem; padding: 1rem; background: #e3f2fd; border-radius: 4px; border-left: 4px solid #2196f3;">
+      <h3 style="margin-top: 0;">🔍 WebRTC Debugging (Firefox)</h3>
+      <p style="margin: 0.5rem 0;"><strong>Console Logs:</strong> Open Firefox DevTools (F12) to see detailed WebRTC/ICE logs</p>
+      <p style="margin: 0.5rem 0;"><strong>Internal Stats:</strong> Visit <a href="about:webrtc" target="_blank" style="color: #1976d2; text-decoration: underline;">about:webrtc</a> for Firefox's internal WebRTC statistics</p>
+      <p style="margin: 0.5rem 0; font-size: 0.9em; color: #555;">
+        The console will show:
+        • ICE candidates (host, srflx, relay)
+        • ICE connection states
+        • Which PeerConnections are created
+        • Adapter.js version info
+      </p>
+    </div>
+
     <div style="margin-top: 1rem;">
       <h3>Activity Log</h3>
       <textarea 

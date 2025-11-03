@@ -172,6 +172,10 @@ The provider uses three message types:
 - Read the [libp2p specs](https://github.com/libp2p/specs)
 - Ask a question on the [js-libp2p discussion board](https://github.com/libp2p/js-libp2p/discussions)
 - Read the [Yjs documentation](https://docs.yjs.dev/) for CRDT and collaborative editing concepts
+- https://webrtc.github.io/samples/
+- https://www.webrtc-experiment.com/
+- https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/
+- https://icetest.info/
 
 ## License
 
