@@ -96,6 +96,7 @@ npm start
 To enable verbose logging:
 
 **Relay server:**
+
 ```bash
 npm run relay:debug
 ```
@@ -114,7 +115,7 @@ This example has been tested with the following browsers:
 - ✅ **Firefox**: Fully supported and tested
 - ⚠️ **Safari/WebKit**: Partial support - WebRTC-Direct connections work, but WebSocket connections to relay do not establish webrtc connection between browsers
 
-**Recommendation:** Use Chrome or Chromium-based browsers for the best experience. Safari/WebKit users should use WebRTC-Direct bootstrap connections.
+**Recommendation:** Use Chrome or Chromium-based or Firefox browsers for the best experience. Safari/WebKit users should use WebRTC-Direct bootstrap connections.
 
 ## How It Works
 

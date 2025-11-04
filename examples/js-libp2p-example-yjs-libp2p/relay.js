@@ -130,8 +130,15 @@ server.services.pubsub.addEventListener('subscription-change', (evt) => {
   for (const sub of evt.detail.subscriptions) {
     if (sub.subscribe && !subscribedTopics.has(sub.topic)) {
       console.log(`Auto-subscribing to topic: ${sub.topic}`)
-      server.services.pubsub.subscribe(sub.topic)
-      subscribedTopics.add(sub.topic)
+      try {
+        server.services.pubsub.subscribe(sub.topic)
+        subscribedTopics.add(sub.topic)
+      } catch (err) {
+        // Ignore errors from closed streams during subscription
+        if (DEBUG) {
+          console.log(`Failed to auto-subscribe to ${sub.topic}: ${err.message}`)
+        }
+      }
     }
   }
 })
