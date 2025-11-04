@@ -195,12 +195,12 @@
     </div>
 
     <div id="status">
-      <label>Topic: <input id="topic" value="spreadsheet-1" /></label>
-      <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-        <button id="connect-webrtc">Connect via WebRTC-Direct</button>
-        <button id="connect-websocket">Connect via WebSocket</button>
+      <div id="connection-mode" style="font-size: 0.9em; color: #666; padding: 0.75rem; background: #f5f5f5; border-radius: 4px; border: 1px solid #ddd;">
+        🔄 Initializing...
       </div>
-      <div id="connection-mode" style="margin-top: 0.5rem; font-size: 0.9em; color: #666;"></div>
+      <!-- Hidden elements for functionality -->
+      <input id="topic" value="spreadsheet-1" type="hidden" />
+      <button id="connect-btn" style="display: none;">Connect to Network</button>
     </div>
 
     <div id="peers" style="display: none">
@@ -235,6 +235,67 @@
     <div id="multiaddrs" style="display: none">
       <h3>My Multiaddresses</h3>
       <select id="multiaddr-select" size="5"></select>
+    </div>
+
+    <div id="dial-section" style="display: none; margin-top: 1rem; padding: 1rem; background: #f0f7ff; border: 1px solid #90caf9; border-radius: 4px;">
+      <h3 style="margin-top: 0;">Dial Peer</h3>
+      <p style="margin-top: 0; font-size: 0.9em; color: #666;">Enter a peer ID or full multiaddress to connect to:</p>
+      <div style="display: flex; gap: 0.5rem;">
+        <input 
+          id="dial-peer-input" 
+          type="text" 
+          placeholder="Enter peer ID or multiaddr (e.g., /ip4/...)" 
+          style="flex: 1; padding: 0.5rem; border: 1px solid #90caf9; border-radius: 4px; font-family: ui-monospace, monospace; font-size: 0.9em;"
+        />
+        <button id="dial-btn">Dial</button>
+      </div>
+    </div>
+
+    <div id="sdp-exchange-section" style="display: none; margin-top: 1rem; padding: 1rem; background: #fff3e0; border: 1px solid #ffb74d; border-radius: 4px;">
+      <h3 style="margin-top: 0;">🔓 Manual SDP Exchange (No Relay Required)</h3>
+      <p style="margin-top: 0; font-size: 0.9em; color: #666;">Establish direct WebRTC connections by manually exchanging SDP offers and answers.</p>
+      
+      <div style="margin-bottom: 15px; padding: 1rem; background: white; border-radius: 4px; border: 1px solid #ffcc80;">
+        <h4 style="margin-top: 0; color: #e65100;">Step 1: Generate Offer (Peer A)</h4>
+        <p style="font-size: 0.85em; color: #666; margin-bottom: 0.5rem;">Click the button to generate an SDP offer, then copy and share it with the other peer.</p>
+        <button id="generate-offer-btn" style="padding: 0.5rem 1rem; background: #ff9800; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">🎯 Generate Offer</button>
+        <textarea 
+          id="offer-output" 
+          rows="3" 
+          readonly 
+          placeholder="Your offer will appear here... Copy and send to Peer B"
+          style="width: 100%; margin-top: 0.5rem; font-family: ui-monospace, monospace; font-size: 0.8em; padding: 0.5rem; border: 1px solid #ffcc80; border-radius: 4px; background: #fffaf0; resize: vertical;"
+        ></textarea>
+      </div>
+      
+      <div style="margin-bottom: 15px; padding: 1rem; background: white; border-radius: 4px; border: 1px solid #ffcc80;">
+        <h4 style="margin-top: 0; color: #e65100;">Step 2: Process Offer & Auto-Connect (Peer B)</h4>
+        <p style="font-size: 0.85em; color: #666; margin-bottom: 0.5rem;">
+          Paste the offer from Peer A and click the button. 
+          <strong style="color: #4caf50;">The answer will be sent back automatically via the WebRTC data channel!</strong>
+        </p>
+        <textarea 
+          id="offer-input" 
+          rows="3" 
+          placeholder="Paste the offer from Peer A here..."
+          style="width: 100%; font-family: ui-monospace, monospace; font-size: 0.8em; padding: 0.5rem; border: 1px solid #ffcc80; border-radius: 4px; resize: vertical;"
+        ></textarea>
+        <button id="generate-answer-btn" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">🚀 Connect & Auto-Send Answer</button>
+        <textarea 
+          id="answer-output" 
+          rows="2" 
+          readonly 
+          placeholder="Answer will be sent automatically via data channel (shown here for reference)"
+          style="width: 100%; margin-top: 0.5rem; font-family: ui-monospace, monospace; font-size: 0.8em; padding: 0.5rem; border: 1px solid #ffcc80; border-radius: 4px; background: #e8f5e9; resize: vertical;"
+        ></textarea>
+      </div>
+      
+      <div style="padding: 1rem; background: #e8f5e9; border-radius: 4px; border: 1px solid #81c784;">
+        <h4 style="margin-top: 0; color: #2e7d32;">✅ Step 3: Automatic (Peer A)</h4>
+        <p style="font-size: 0.85em; color: #2e7d32; margin-bottom: 0;">
+          <strong>No action needed!</strong> Peer A will receive the answer automatically via the WebRTC data channel and complete the connection.
+        </p>
+      </div>
     </div>
 
     <div style="margin-top: 1rem;">

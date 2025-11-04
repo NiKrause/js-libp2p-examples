@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebRTC Test - Peer A (Offerer)</title>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    textarea { width: 100%; height: 150px; font-family: monospace; }
+    button { padding: 10px; margin: 5px; }
+    .log { background: #f0f0f0; padding: 10px; margin-top: 10px; height: 300px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h2>🅰️ Peer A (Offerer)</h2>
+  
+  <h3>Step 1: Generate Offer</h3>
+  <button onclick="createOffer()">Create Offer</button>
+  <textarea id="localOffer" placeholder="Offer will appear here..."></textarea>
+  
+  <h3>Step 2: Paste Answer from B</h3>
+  <textarea id="remoteAnswer" placeholder="Paste answer from Peer B here..."></textarea>
+  <button onclick="setAnswer()">Set Answer</button>
+  
+  <div class="log" id="log"></div>
+
+  <script>
+    const log = (msg) => {
+      const time = new Date().toLocaleTimeString();
+      document.getElementById('log').innerHTML = `[${time}] ${msg}<br>` + document.getElementById('log').innerHTML;
+      console.log(msg);
+    };
+
+    let pc;
+    let dataChannel;
+
+    function createOffer() {
+      log('🔵 Creating RTCPeerConnection...');
+      pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' }
+        ]
+      });
+
+      // Create data channel BEFORE creating offer
+      log('🔵 Creating data channel...');
+      dataChannel = pc.createDataChannel('test', { ordered: true });
+      log(`   → Data channel created, readyState: ${dataChannel.readyState}`);
+      
+      dataChannel.onopen = () => {
+        log(`🎉 Data channel opened! readyState: ${dataChannel.readyState}`);
+      };
+      
+      dataChannel.onmessage = (e) => {
+        log(`📥 Received message: ${e.data}`);
+        // If we receive the answer via data channel, process it
+        try {
+          const data = JSON.parse(e.data);
+          if (data.type === 'sdp-answer') {
+            log('📥 Received SDP answer via data channel!');
+            setAnswerFromDataChannel(data.answer);
+          }
+        } catch (err) {
+          // Not JSON, just a regular message
+        }
+      };
+      
+      dataChannel.onclose = () => {
+        log(`🔒 Data channel closed`);
+      };
+      
+      dataChannel.onerror = (err) => {
+        log(`❌ Data channel error: ${err}`);
+      };
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          log(`   → ICE candidate: ${e.candidate.type}`);
+        } else {
+          log('🔵 ICE gathering complete');
+          document.getElementById('localOffer').value = JSON.stringify(pc.localDescription);
+          log('✅ Offer ready! Copy it to Peer B');
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        log(`🔌 ICE connection state: ${pc.iceConnectionState}`);
+      };
+
+      pc.onconnectionstatechange = () => {
+        log(`📡 Connection state: ${pc.connectionState}`);
+      };
+
+      log('🔵 Creating offer...');
+      pc.createOffer()
+        .then(offer => {
+          log('🔵 Setting local description...');
+          return pc.setLocalDescription(offer);
+        })
+        .then(() => {
+          log('✅ Local description set, gathering ICE candidates...');
+        })
+        .catch(err => {
+          log(`❌ Error: ${err.message}`);
+        });
+    }
+
+    function setAnswer() {
+      const answerText = document.getElementById('remoteAnswer').value.trim();
+      if (!answerText) {
+        log('❌ Please paste an answer first');
+        return;
+      }
+
+      try {
+        const answer = JSON.parse(answerText);
+        log('🔵 Setting remote description (answer)...');
+        pc.setRemoteDescription(new RTCSessionDescription(answer))
+          .then(() => {
+            log('✅ Remote description set! Connection should establish...');
+          })
+          .catch(err => {
+            log(`❌ Error setting answer: ${err.message}`);
+          });
+      } catch (err) {
+        log(`❌ Error parsing answer: ${err.message}`);
+      }
+    }
+
+    function setAnswerFromDataChannel(answerBase64) {
+      try {
+        const answer = JSON.parse(atob(answerBase64));
+        log('🔵 Setting remote description from data channel...');
+        pc.setRemoteDescription(new RTCSessionDescription(answer))
+          .then(() => {
+            log('✅ Remote description set automatically!');
+          })
+          .catch(err => {
+            log(`❌ Error: ${err.message}`);
+          });
+      } catch (err) {
+        log(`❌ Error processing answer: ${err.message}`);
+      }
+    }
+
+    log('Ready! Click "Create Offer" to start');
+  </script>
+</body>
+</html>
+

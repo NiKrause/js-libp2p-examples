@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC Test</title>
+</head>
+<body>
+
+  <h3>Local SDP (copy this to remote)</h3>
+
+  <textarea id="local" style="width:100%;height:150px"></textarea>
+
+  <h3>Remote SDP (paste from other peer)</h3>
+
+  <textarea id="remote" style="width:100%;height:150px"></textarea>
+
+  <br/>
+
+  <button onclick="connect()">Set Remote Description</button>
+
+  <script>
+    const pc = new RTCPeerConnection();
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate === null) {
+        document.getElementById('local').value = JSON.stringify(pc.localDescription);
+      }
+    };
+
+    pc.ondatachannel = (event) => {
+      const receiveChannel = event.channel;
+      receiveChannel.onmessage = (e) => console.log("Received:", e.data);
+      receiveChannel.onopen = () => receiveChannel.send("Hello from receiver!");
+    };
+
+    const channel = pc.createDataChannel("chat");
+    channel.onopen = () => channel.send("Hello from initiator!");
+    channel.onmessage = (e) => console.log("Received:", e.data);
+
+    pc.createOffer().then(offer => pc.setLocalDescription(offer));
+
+    window.connect = () => {
+      const remoteSDP = JSON.parse(document.getElementById('remote').value);
+      console.log('remoteSDP', remoteSDP);
+      pc.setRemoteDescription(new RTCSessionDescription(remoteSDP));
+    };
+  </script>
+
+</body>
+</html>

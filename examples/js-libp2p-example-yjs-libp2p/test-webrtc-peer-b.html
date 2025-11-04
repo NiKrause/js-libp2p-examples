@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebRTC Test - Peer B (Answerer)</title>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    textarea { width: 100%; height: 150px; font-family: monospace; }
+    button { padding: 10px; margin: 5px; }
+    .log { background: #f0f0f0; padding: 10px; margin-top: 10px; height: 300px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h2>🅱️ Peer B (Answerer)</h2>
+  
+  <h3>Step 1: Paste Offer from A</h3>
+  <textarea id="remoteOffer" placeholder="Paste offer from Peer A here..."></textarea>
+  <button onclick="createAnswer()">Create Answer & Auto-Send</button>
+  
+  <h3>Step 2: Answer (for manual fallback)</h3>
+  <textarea id="localAnswer" placeholder="Answer will appear here..."></textarea>
+  <p style="color: green;">If auto-send works, you won't need to copy this manually!</p>
+  
+  <div class="log" id="log"></div>
+
+  <script>
+    const log = (msg) => {
+      const time = new Date().toLocaleTimeString();
+      document.getElementById('log').innerHTML = `[${time}] ${msg}<br>` + document.getElementById('log').innerHTML;
+      console.log(msg);
+    };
+
+    let pc;
+    let receivedChannel;
+
+    function createAnswer() {
+      const offerText = document.getElementById('remoteOffer').value.trim();
+      if (!offerText) {
+        log('❌ Please paste an offer first');
+        return;
+      }
+
+      try {
+        const offer = JSON.parse(offerText);
+        
+        log('🟢 Creating RTCPeerConnection...');
+        pc = new RTCPeerConnection({
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' }
+          ]
+        });
+
+        // Set up data channel handler BEFORE setting remote description!
+        pc.ondatachannel = (event) => {
+          log('📡 Data channel received from remote peer!');
+          receivedChannel = event.channel;
+          log(`   → Data channel readyState: ${receivedChannel.readyState}`);
+          
+          receivedChannel.onopen = () => {
+            log(`🎉 Data channel opened! readyState: ${receivedChannel.readyState}`);
+            
+            // Try to send the answer via the data channel!
+            if (pc.localDescription) {
+              log('📤 Attempting to send answer via data channel...');
+              const answerBase64 = btoa(JSON.stringify(pc.localDescription));
+              try {
+                receivedChannel.send(JSON.stringify({
+                  type: 'sdp-answer',
+                  answer: answerBase64
+                }));
+                log('✅ Answer sent via data channel!');
+              } catch (err) {
+                log(`❌ Failed to send via data channel: ${err.message}`);
+              }
+            }
+          };
+          
+          receivedChannel.onmessage = (e) => {
+            log(`📥 Received message: ${e.data}`);
+          };
+          
+          receivedChannel.onclose = () => {
+            log(`🔒 Data channel closed`);
+          };
+          
+          receivedChannel.onerror = (err) => {
+            log(`❌ Data channel error: ${err}`);
+          };
+        };
+
+        pc.onicecandidate = (e) => {
+          if (e.candidate) {
+            log(`   → ICE candidate: ${e.candidate.type}`);
+          } else {
+            log('🟢 ICE gathering complete');
+            document.getElementById('localAnswer').value = JSON.stringify(pc.localDescription);
+            log('✅ Answer ready (shown for manual fallback)');
+          }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          log(`🔌 ICE connection state: ${pc.iceConnectionState}`);
+        };
+
+        pc.onconnectionstatechange = () => {
+          log(`📡 Connection state: ${pc.connectionState}`);
+        };
+
+        log('🟢 Setting remote description (offer)...');
+        pc.setRemoteDescription(new RTCSessionDescription(offer))
+          .then(() => {
+            log('✅ Remote description set');
+            log('🟢 Creating answer...');
+            return pc.createAnswer();
+          })
+          .then(answer => {
+            log('🟢 Setting local description (answer)...');
+            return pc.setLocalDescription(answer);
+          })
+          .then(() => {
+            log('✅ Local description set, gathering ICE candidates...');
+            log('⏳ Waiting for data channel to open...');
+          })
+          .catch(err => {
+            log(`❌ Error: ${err.message}`);
+          });
+      } catch (err) {
+        log(`❌ Error parsing offer: ${err.message}`);
+      }
+    }
+
+    log('Ready! Paste offer from Peer A and click button');
+  </script>
+</body>
+</html>
+
