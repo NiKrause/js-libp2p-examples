@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h2>WebRTC without signaling server (manual SDP exchange)</h2>
+<textarea id="offer" placeholder="Paste Offer/Answer here" cols="80" rows="10"></textarea><br>
+<button id="create-offer">Create Offer</button>
+<button id="create-answer">Create Answer</button>
+<button id="set-remote">Set Remote Description</button>
+<pre id="log"></pre>
+
+<script>
+const log = (...args) => document.getElementById("log").textContent += args.join(" ") + "\n";
+let pc = new RTCPeerConnection();
+let dc;
+
+// Create data channel on offerer side
+document.getElementById("create-offer").onclick = async () => {
+  dc = pc.createDataChannel("chat");
+  setupDataChannel(dc);
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  log("Offer created. Copy below SDP to answerer:");
+  document.getElementById("offer").value = JSON.stringify(pc.localDescription);
+};
+
+// Create answer on answerer side
+document.getElementById("create-answer").onclick = async () => {
+  pc.ondatachannel = e => {
+    dc = e.channel;
+    setupDataChannel(dc);
+  };
+  const offer = JSON.parse(document.getElementById("offer").value);
+  await pc.setRemoteDescription(offer);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  log("Answer created. Copy below SDP to offerer:");
+  document.getElementById("offer").value = JSON.stringify(pc.localDescription);
+};
+
+// Apply remote description on both sides
+document.getElementById("set-remote").onclick = async () => {
+  const desc = JSON.parse(document.getElementById("offer").value);
+  await pc.setRemoteDescription(desc);
+  log("Remote description set.");
+};
+
+function setupDataChannel(channel) {
+  channel.onopen = () => log("Data channel open!");
+  channel.onmessage = e => log("Received:", e.data);
+  window.send = msg => channel.send(msg);
+}
+</script>
+</body>
+</html>

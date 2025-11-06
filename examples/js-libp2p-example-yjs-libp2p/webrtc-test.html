@@ -23,12 +23,14 @@
     const pc = new RTCPeerConnection();
 
     pc.onicecandidate = (e) => {
+      console.log('onicecandidate', e);
       if (e.candidate === null) {
         document.getElementById('local').value = JSON.stringify(pc.localDescription);
       }
     };
 
     pc.ondatachannel = (event) => {
+      console.log('ondatachannel', event);
       const receiveChannel = event.channel;
       receiveChannel.onmessage = (e) => console.log("Received:", e.data);
       receiveChannel.onopen = () => receiveChannel.send("Hello from receiver!");

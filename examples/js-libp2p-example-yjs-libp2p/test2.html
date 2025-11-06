@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>WebRTC Copy &amp; Paste (einmalig)</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      line-height: 1.5;
+    }
+    textarea {
+      width: 100%;
+      min-height: 9rem;
+      font-family: monospace;
+      resize: vertical;
+    }
+    section {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    button {
+      margin-top: 0.5rem;
+      margin-right: 0.5rem;
+    }
+    pre {
+      background: #111;
+      color: #eee;
+      padding: 1rem;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 16rem;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebRTC Test: Answer über DataChannel zurücksenden</h1>
+  <p>
+    Öffne diese Datei in <strong>zwei unterschiedlichen Browser-Fenstern</strong>.
+    Browser&nbsp;1 erstellt wie gewohnt ein Offer, das du <strong>einmalig</strong> nach Browser&nbsp;2 kopierst.
+    Der Answer wird dort erzeugt und automatisch über den DataChannel zurück zu Browser&nbsp;1 übertragen.
+    Sollte das nicht klappen, steht der Answer weiterhin zur manuellen Übernahme bereit.
+  </p>
+
+  <section id="initiator">
+    <h2>Initiator (Browser 1)</h2>
+    <button id="btn-create-offer">Offer erzeugen</button>
+    <button id="btn-send-test" disabled>Nachricht senden</button>
+    <p>JSON Offer (kopieren und im zweiten Browser einfügen):</p>
+    <textarea id="offer-out" readonly></textarea>
+    <p>Fallback: Answer manuell einfügen, falls der automatische Rückweg nicht greift:</p>
+    <textarea id="answer-in"></textarea>
+    <button id="btn-apply-answer">Answer anwenden</button>
+  </section>
+
+  <section id="responder">
+    <h2>Responder (Browser 2)</h2>
+    <p>Offer aus Browser 1 hier einfügen:</p>
+    <textarea id="offer-in"></textarea>
+    <button id="btn-accept-offer">Offer übernehmen &amp; Answer erzeugen</button>
+    <p>Fallback: Answer zum manuellen Zurückkopieren:</p>
+    <textarea id="answer-out" readonly></textarea>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <pre id="log"></pre>
+  </section>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const log = (...messages) => {
+      const text = messages.map(m => typeof m === 'string' ? m : JSON.stringify(m, null, 2)).join(' ');
+      logEl.textContent += `${text}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(...messages);
+    };
+
+    const waitForIceGatheringComplete = pc => new Promise(resolve => {
+      if (pc.iceGatheringState === 'complete') {
+        resolve();
+      } else {
+        const checkState = () => {
+          if (pc.iceGatheringState === 'complete') {
+            pc.removeEventListener('icegatheringstatechange', checkState);
+            resolve();
+          }
+        };
+        pc.addEventListener('icegatheringstatechange', checkState);
+      }
+    });
+
+    const offerOut = document.getElementById('offer-out');
+    const answerIn = document.getElementById('answer-in');
+    const offerIn = document.getElementById('offer-in');
+    const answerOut = document.getElementById('answer-out');
+    const createOfferBtn = document.getElementById('btn-create-offer');
+    const applyAnswerBtn = document.getElementById('btn-apply-answer');
+    const acceptOfferBtn = document.getElementById('btn-accept-offer');
+    const sendTestBtn = document.getElementById('btn-send-test');
+
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ]
+    });
+    const dataChannel = pc.createDataChannel('sendSDP');
+
+    dataChannel.onopen = () => {
+      log('Initiator: DataChannel offen');
+      sendTestBtn.disabled = false;
+    };
+
+    dataChannel.onmessage = async event => {
+      const payload = event.data;
+      log('Initiator: Nachricht erhalten ->', payload);
+      if (typeof payload === 'string') {
+        answerIn.value = payload;
+        try {
+          const parsed = JSON.parse(payload);
+          if (parsed && parsed.type === 'answer') {
+            if (pc.signalingState === 'have-local-offer' || pc.signalingState === 'have-remote-pranswer') {
+              await pc.setRemoteDescription(parsed);
+              log('Initiator: Answer automatisch angewendet (via DataChannel).');
+            } else {
+              log('Initiator: Answer empfangen, aber Signaling-State war', pc.signalingState);
+            }
+            return;
+          }
+        } catch (err) {
+          log('Initiator: Konnte Nachricht nicht als Answer interpretieren:', err);
+        }
+      }
+    };
+
+    pc.onicecandidate = event => {
+      if (event.candidate) {
+        log('Initiator: ICE-Kandidat gefunden.');
+      } else if (pc.iceGatheringState === 'complete') {
+        log('Initiator: ICE-Sammlung abgeschlossen.');
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      log('Initiator: Verbindungsstatus ->', pc.connectionState);
+    };
+
+    createOfferBtn.addEventListener('click', async () => {
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        log('Initiator: Warte auf vollständige ICE-Sammlung...');
+        await waitForIceGatheringComplete(pc);
+        const payload = JSON.stringify(pc.localDescription);
+        offerOut.value = payload;
+        offerOut.select();
+        log('Initiator: Offer erstellt. Kopiere den JSON-Block in Browser 2.');
+      } catch (err) {
+        log('Initiator: Fehler beim Erstellen des Offers:', err);
+      }
+    });
+
+    applyAnswerBtn.addEventListener('click', async () => {
+      try {
+        const answerText = answerIn.value.trim();
+        if (!answerText) {
+          log('Initiator: Kein Answer eingefügt.');
+          return;
+        }
+        const answer = JSON.parse(answerText);
+        await pc.setRemoteDescription(answer);
+        log('Initiator: Answer manuell angewendet.');
+      } catch (err) {
+        log('Initiator: Fehler beim Anwenden des Answers:', err);
+      }
+    });
+
+    sendTestBtn.addEventListener('click', () => {
+      if (dataChannel.readyState === 'open') {
+        const message = `Hallo vom Initiator um ${new Date().toLocaleTimeString()}`;
+        dataChannel.send(message);
+        log('Initiator: Nachricht gesendet ->', message);
+      } else {
+        log('Initiator: DataChannel ist nicht offen.');
+      }
+    });
+
+    const pcAnswer = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ]
+    });
+
+    let responderChannel;
+    let pendingAnswerPayload = null;
+
+    const trySendPendingAnswer = () => {
+      if (pendingAnswerPayload && responderChannel && responderChannel.readyState === 'open') {
+        responderChannel.send(pendingAnswerPayload);
+        log('Responder: Answer automatisch über DataChannel gesendet.');
+        pendingAnswerPayload = null;
+      }
+    };
+
+    pcAnswer.ondatachannel = event => {
+      responderChannel = event.channel;
+
+      responderChannel.onopen = () => {
+        log('Responder: DataChannel offen');
+        trySendPendingAnswer();
+      };
+
+      responderChannel.onmessage = event => {
+        log('Responder: Nachricht erhalten ->', event.data);
+      };
+    };
+
+    pcAnswer.onicecandidate = event => {
+      if (event.candidate) {
+        log('Responder: ICE-Kandidat gefunden.');
+      } else if (pcAnswer.iceGatheringState === 'complete') {
+        log('Responder: ICE-Sammlung abgeschlossen.');
+      }
+    };
+
+    pcAnswer.onconnectionstatechange = () => {
+      log('Responder: Verbindungsstatus ->', pcAnswer.connectionState);
+    };
+
+    acceptOfferBtn.addEventListener('click', async () => {
+      try {
+        const offerText = offerIn.value.trim();
+        if (!offerText) {
+          log('Responder: Kein Offer eingefügt.');
+          return;
+        }
+        const offer = JSON.parse(offerText);
+        await pcAnswer.setRemoteDescription(offer);
+        log('Responder: Offer übernommen. Erstelle Answer...');
+
+        const answer = await pcAnswer.createAnswer();
+        await pcAnswer.setLocalDescription(answer);
+        log('Responder: Warte auf vollständige ICE-Sammlung...');
+        await waitForIceGatheringComplete(pcAnswer);
+
+        pendingAnswerPayload = JSON.stringify(pcAnswer.localDescription);
+        answerOut.value = pendingAnswerPayload;
+        answerOut.select();
+        log('Responder: Answer erstellt. Wird automatisch gesendet, sobald der DataChannel bereit ist.');
+        trySendPendingAnswer();
+      } catch (err) {
+        log('Responder: Fehler beim Verarbeiten des Offers:', err);
+      }
+    });
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>WebRTC Copy &amp; Paste Signaling</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      line-height: 1.5;
+    }
+    textarea {
+      width: 100%;
+      min-height: 9rem;
+      font-family: monospace;
+      resize: vertical;
+    }
+    section {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    button {
+      margin-top: 0.5rem;
+      margin-right: 0.5rem;
+    }
+    pre {
+      background: #111;
+      color: #eee;
+      padding: 1rem;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 16rem;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebRTC Test mit manueller Signalisierung</h1>
+  <p>
+    Öffne diese Datei in <strong>zwei unterschiedlichen Browser-Fenstern</strong>.
+    Der erste Browser erstellt ein Offer, kopiere den JSON-Text in den zweiten Browser.
+    Dort wird das Offer übernommen und ein Answer erzeugt, das du zurück in den ersten Browser kopierst.
+  </p>
+
+  <section id="initiator">
+    <h2>Initiator (Browser 1)</h2>
+    <button id="btn-create-offer">Offer erzeugen</button>
+    <button id="btn-send-test" disabled>Nachricht senden</button>
+    <p>JSON Offer (kopieren und im zweiten Browser einfügen):</p>
+    <textarea id="offer-out" readonly></textarea>
+    <p>Answer aus Browser 2 hier einfügen und übernehmen:</p>
+    <textarea id="answer-in"></textarea>
+    <button id="btn-apply-answer">Answer anwenden</button>
+  </section>
+
+  <section id="responder">
+    <h2>Responder (Browser 2)</h2>
+    <p>Offer aus Browser 1 hier einfügen:</p>
+    <textarea id="offer-in"></textarea>
+    <button id="btn-accept-offer">Offer übernehmen &amp; Answer erzeugen</button>
+    <p>Antwort zurück nach Browser 1 kopieren:</p>
+    <textarea id="answer-out" readonly></textarea>
+  </section>
+
+  <section>
+    <h2>Log</h2>
+    <pre id="log"></pre>
+  </section>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const log = (...messages) => {
+      const text = messages.map(m => typeof m === 'string' ? m : JSON.stringify(m, null, 2)).join(' ');
+      logEl.textContent += `${text}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+      console.log(...messages);
+    };
+
+    const waitForIceGatheringComplete = pc => new Promise(resolve => {
+      if (pc.iceGatheringState === 'complete') {
+        resolve();
+      } else {
+        const checkState = () => {
+          if (pc.iceGatheringState === 'complete') {
+            pc.removeEventListener('icegatheringstatechange', checkState);
+            resolve();
+          }
+        };
+        pc.addEventListener('icegatheringstatechange', checkState);
+      }
+    });
+
+    const offerOut = document.getElementById('offer-out');
+    const answerIn = document.getElementById('answer-in');
+    const offerIn = document.getElementById('offer-in');
+    const answerOut = document.getElementById('answer-out');
+    const createOfferBtn = document.getElementById('btn-create-offer');
+    const applyAnswerBtn = document.getElementById('btn-apply-answer');
+    const acceptOfferBtn = document.getElementById('btn-accept-offer');
+    const sendTestBtn = document.getElementById('btn-send-test');
+
+    // Initiator Peer (Browser 1)
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ]
+    });
+    const dataChannel = pc.createDataChannel('sendSDP');
+
+    dataChannel.onopen = () => {
+      log('Initiator: DataChannel offen');
+      sendTestBtn.disabled = false;
+    };
+
+    dataChannel.onmessage = event => {
+      log('Initiator: Nachricht erhalten ->', event.data);
+    };
+
+    pc.onicecandidate = event => {
+      if (event.candidate) {
+        log('Initiator: ICE-Kandidat gefunden.');
+      } else if (pc.iceGatheringState === 'complete') {
+        log('Initiator: ICE-Sammlung abgeschlossen.');
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      log('Initiator: Verbindungstatus ->', pc.connectionState);
+    };
+
+    createOfferBtn.addEventListener('click', async () => {
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        log('Initiator: Warte auf vollständige ICE-Sammlung...');
+        await waitForIceGatheringComplete(pc);
+        const payload = JSON.stringify(pc.localDescription);
+        offerOut.value = payload;
+        offerOut.select();
+        log('Initiator: Offer erstellt. Kopiere den JSON-Block in Browser 2.');
+      } catch (err) {
+        log('Initiator: Fehler beim Erstellen des Offers:', err);
+      }
+    });
+
+    applyAnswerBtn.addEventListener('click', async () => {
+      try {
+        const answerText = answerIn.value.trim();
+        if (!answerText) {
+          log('Initiator: Kein Answer eingefügt.');
+          return;
+        }
+        const answer = JSON.parse(answerText);
+        await pc.setRemoteDescription(answer);
+        log('Initiator: Answer angewendet. DataChannel sollte bald verbinden.');
+      } catch (err) {
+        log('Initiator: Fehler beim Anwenden des Answers:', err);
+      }
+    });
+
+    sendTestBtn.addEventListener('click', () => {
+      if (dataChannel.readyState === 'open') {
+        const message = `Hallo vom Initiator um ${new Date().toLocaleTimeString()}`;
+        dataChannel.send(message);
+        log('Initiator: Nachricht gesendet ->', message);
+      } else {
+        log('Initiator: DataChannel ist nicht offen.');
+      }
+    });
+
+    // Responder Peer (Browser 2)
+    const pcAnswer = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ]
+    });
+
+    let responderChannel;
+    pcAnswer.ondatachannel = event => {
+      responderChannel = event.channel;
+
+      responderChannel.onopen = () => {
+        log('Responder: DataChannel offen');
+      };
+
+      responderChannel.onmessage = event => {
+        log('Responder: Nachricht erhalten ->', event.data);
+      };
+    };
+
+    pcAnswer.onicecandidate = event => {
+      if (event.candidate) {
+        log('Responder: ICE-Kandidat gefunden.');
+      } else if (pcAnswer.iceGatheringState === 'complete') {
+        log('Responder: ICE-Sammlung abgeschlossen.');
+      }
+    };
+
+    pcAnswer.onconnectionstatechange = () => {
+      log('Responder: Verbindungsstatus ->', pcAnswer.connectionState);
+    };
+
+    acceptOfferBtn.addEventListener('click', async () => {
+      try {
+        const offerText = offerIn.value.trim();
+        if (!offerText) {
+          log('Responder: Kein Offer eingefügt.');
+          return;
+        }
+        const offer = JSON.parse(offerText);
+        await pcAnswer.setRemoteDescription(offer);
+        log('Responder: Offer übernommen. Erstelle Answer...');
+
+        const answer = await pcAnswer.createAnswer();
+        await pcAnswer.setLocalDescription(answer);
+        log('Responder: Warte auf vollständige ICE-Sammlung...');
+        await waitForIceGatheringComplete(pcAnswer);
+        const payload = JSON.stringify(pcAnswer.localDescription);
+        answerOut.value = payload;
+        answerOut.select();
+        log('Responder: Answer erstellt. Kopiere den JSON-Block zurück nach Browser 1.');
+      } catch (err) {
+        log('Responder: Fehler beim Verarbeiten des Offers:', err);
+      }
+    });
+  </script>
+</body>
+</html>

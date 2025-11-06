@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Manual SDP WebRTC Chat</title>
+<style>
+body { font-family: sans-serif; margin: 20px; }
+textarea { width: 100%; height: 120px; }
+#chat { border: 1px solid #ccc; padding: 10px; height: 200px; overflow-y: auto; margin-top: 10px; }
+</style>
+</head>
+<body>
+<h2>Manual WebRTC DataChannel Chat</h2>
+
+<button id="createOffer">Create Offer</button>
+<button id="createAnswer">Set Remote & Create Answer</button>
+<button id="setAnswer">Set Remote Answer</button>
+
+<h4>Local SDP</h4>
+<textarea id="localSdp" readonly></textarea>
+
+<h4>Remote SDP</h4>
+<textarea id="remoteSdp"></textarea>
+
+<h4>Chat</h4>
+<div id="chat"></div>
+<input id="messageInput" placeholder="Type message..." style="width:80%">
+<button id="sendBtn">Send</button>
+
+<script>
+let pc;
+let channel;
+const chat = document.getElementById('chat');
+
+function log(msg) {
+  const div = document.createElement('div');
+  div.textContent = msg;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+function initPeer() {
+  pc = new RTCPeerConnection();
+  pc.onicecandidate = e => {
+    if (e.candidate === null) {
+      document.getElementById('localSdp').value = JSON.stringify(pc.localDescription);
+    }
+  };
+  pc.ondatachannel = e => {
+    channel = e.channel;
+    setupChannel();
+  };
+}
+
+function setupChannel() {
+  channel.onopen = () => log('DataChannel open!');
+  channel.onmessage = e => log('Peer: ' + e.data);
+}
+
+document.getElementById('createOffer').onclick = async () => {
+  initPeer();
+  channel = pc.createDataChannel('chat');
+  setupChannel();
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  log('Offer created! Copy Local SDP below and send to peer.');
+  // SDP will be shown when ICE gathering finishes
+};
+
+document.getElementById('createAnswer').onclick = async () => {
+  const remoteSdp = document.getElementById('remoteSdp').value;
+  if (!remoteSdp) {
+    alert('Please paste the remote SDP first!');
+    return;
+  }
+  initPeer();
+  const offer = JSON.parse(remoteSdp);
+  await pc.setRemoteDescription(offer);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+  log('Answer created! Copy Local SDP below and send to peer.');
+};
+
+document.getElementById('setAnswer').onclick = async () => {
+  const remoteSdp = document.getElementById('remoteSdp').value;
+  if (!remoteSdp) {
+    alert('Please paste the remote answer SDP first!');
+    return;
+  }
+  const answer = JSON.parse(remoteSdp);
+  await pc.setRemoteDescription(answer);
+  log('Remote answer set! Connection should establish soon.');
+};
+
+document.getElementById('sendBtn').onclick = () => {
+  const input = document.getElementById('messageInput');
+  if (channel && channel.readyState === 'open') {
+    channel.send(input.value);
+    log('You: ' + input.value);
+    input.value = '';
+  } else {
+    alert('DataChannel is not open yet!');
+  }
+};
+
+document.getElementById('messageInput').onkeypress = (e) => {
+  if (e.key === 'Enter') {
+    document.getElementById('sendBtn').click();
+  }
+};
+</script>
+</body>
+</html>
