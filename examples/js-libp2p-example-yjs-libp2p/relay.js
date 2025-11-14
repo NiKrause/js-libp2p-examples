@@ -13,6 +13,7 @@ import { privateKeyFromProtobuf } from '@libp2p/crypto/keys'
 import { dcutr } from '@libp2p/dcutr'
 import { gossipsub } from '@libp2p/gossipsub'
 import { identify, identifyPush } from '@libp2p/identify'
+import { ping } from '@libp2p/ping'
 import { createEd25519PeerId, createFromJSON } from '@libp2p/peer-id-factory'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { tcp } from '@libp2p/tcp'
@@ -92,6 +93,7 @@ const server = await createLibp2p({
     identifyPush: identifyPush(),
     autoNAT: autoNAT(),
     dcutr: dcutr(),
+    ping: ping(),
     pubsub: gossipsub({
       emitSelf: false,
       allowPublishToZeroTopicPeers: true

@@ -8,6 +8,7 @@ import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
 import { dcutr } from '@libp2p/dcutr'
 import { gossipsub } from '@libp2p/gossipsub'
 import { identify, identifyPush } from '@libp2p/identify'
+import { ping } from '@libp2p/ping'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
@@ -180,6 +181,7 @@ async function connectWithTransports (mode = 'webrtc') {
         identifyPush: identifyPush(),
         autoNAT: autoNAT(),
         dcutr: dcutr(),  // Enable DCUTR for automatic relay → direct WebRTC upgrades
+        ping: ping(),
         pubsub: gossipsub({
           emitSelf: false,
           allowPublishToZeroTopicPeers: true
