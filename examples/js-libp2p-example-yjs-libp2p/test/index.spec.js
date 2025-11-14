@@ -630,8 +630,7 @@ test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
   // WebKit's WebRTC DataChannel gets stuck in "connecting" state when upgrading
   // from WebSocket relay connections. Direct WebRTC works fine in WebKit.
   // TODO Fix: https://github.com/libp2p/js-libp2p/issues/3347
-  test.skip(({ browserName }) => browserName === 'webkit', 'WebKit does not support WebSocket→WebRTC upgrade')
-
+  // test.skip(({ browserName }) => browserName === 'webkit', 'WebKit does not support WebSocket→WebRTC upgrade')
   test('should sync spreadsheet data via WebSocket bootstrap', async ({ browser }) => {
     const context1 = await browser.newContext()
     const context2 = await browser.newContext()
