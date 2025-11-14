@@ -629,7 +629,7 @@ test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
   // Skip WebSocket Bootstrap tests on WebKit due to known limitation:
   // WebKit's WebRTC DataChannel gets stuck in "connecting" state when upgrading
   // from WebSocket relay connections. Direct WebRTC works fine in WebKit.
-  // TODO Fix: https://github.com/libp2p/js-libp2p/issues/3347
+  // See: https://github.com/libp2p/js-libp2p/issues/3347
   // test.skip(({ browserName }) => browserName === 'webkit', 'WebKit does not support WebSocket→WebRTC upgrade')
 
   test('should sync spreadsheet data via WebSocket bootstrap', async ({ browser }) => {
@@ -784,7 +784,7 @@ test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
 })
 
 // Separate test suite for late joiner test due to timing/resource conflicts
-// TODO: This test is working when running isolated, but fails when running with other tests.
+// Note: This test is working when running isolated, but fails when running with other tests.
 test.describe.skip('Collaborative Spreadsheet - Late Joiner', () => {
   test.setTimeout(process.env.CI ? 300000 : 180000) // 5 min for CI, 3 min for local
 
