@@ -103,10 +103,17 @@ function parseRange (range) {
 
 export class SpreadsheetEngine {
   constructor (yjsDoc) {
+    this.yjsDoc = yjsDoc
     this.cells = yjsDoc.getMap('cells')
     this.dependencyGraph = new Map() // cellId -> Set of dependent cellIds
     this.observers = new Set()
     this.isProcessing = false // Guard against recursive processing
+
+    // Set up Yjs UndoManager for undo/redo functionality
+    this.undoManager = new Y.UndoManager(this.cells, {
+      trackedOrigins: new Set([null, 'user-action']),
+      captureTimeout: 500 // Group rapid changes within 500ms as one undo step
+    })
 
     // Watch for changes to recalculate
     this.cells.observeDeep((events) => {
@@ -499,6 +506,57 @@ export class SpreadsheetEngine {
     this.cells.delete(normalizedCoord)
     this.notifyObservers(normalizedCoord)
   }
+
+  /**
+   * Undo the last change
+   *
+   * @returns {boolean} True if undo was performed, false if nothing to undo
+   */
+  undo () {
+    if (this.undoManager.canUndo()) {
+      this.undoManager.undo()
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Redo the last undone change
+   *
+   * @returns {boolean} True if redo was performed, false if nothing to redo
+   */
+  redo () {
+    if (this.undoManager.canRedo()) {
+      this.undoManager.redo()
+      return true
+    }
+    return false
+  }
+
+  /**
+   * Check if undo is available
+   *
+   * @returns {boolean}
+   */
+  canUndo () {
+    return this.undoManager.canUndo()
+  }
+
+  /**
+   * Check if redo is available
+   *
+   * @returns {boolean}
+   */
+  canRedo () {
+    return this.undoManager.canRedo()
+  }
+
+  /**
+   * Clear undo/redo history
+   */
+  clearUndoHistory () {
+    this.undoManager.clear()
+  }
 }
 
 /**
@@ -515,6 +573,11 @@ export class SpreadsheetUI {
     this.engine = spreadsheetEngine
     this.currentCell = null
     this.gridSize = options.gridSize || { rows: 10, cols: 8 }
+
+    // Selection tracking for copy/paste
+    this.selectionStart = null
+    this.selectionEnd = null
+    this.copiedData = null // Stores copied cell data
 
     // DOM element references
     this.elements = {
@@ -536,6 +599,7 @@ export class SpreadsheetUI {
   initialize () {
     this.createGrid()
     this.setupFormulaBarHandler()
+    this.setupClipboardHandlers()
     this.show()
     this.selectCell('A1')
   }
@@ -899,5 +963,326 @@ export class SpreadsheetUI {
    */
   getGridSize () {
     return this.gridSize
+  }
+
+  /**
+   * Check if the active element is a spreadsheet focus target
+   */
+  isSpreadsheetFocus () {
+    const activeEl = document.activeElement
+    return activeEl?.id?.startsWith('cell-') || activeEl?.id === 'formula-input'
+  }
+
+  /**
+   * Handle keyboard shortcuts for undo/redo/copy/cut/paste
+   *
+   * @param e
+   */
+  handleKeyboardShortcut (e) {
+    if (!this.isSpreadsheetFocus()) { return }
+
+    const isModifier = e.ctrlKey || e.metaKey
+
+    // Undo: Ctrl+Z or Cmd+Z (but not Shift+Z)
+    if (isModifier && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault()
+      this.handleUndo()
+      return
+    }
+
+    // Redo: Ctrl+Y or Cmd+Y or Ctrl+Shift+Z or Cmd+Shift+Z
+    if ((isModifier && e.key === 'y') ||
+        (isModifier && e.shiftKey && e.key === 'z')) {
+      e.preventDefault()
+      this.handleRedo()
+      return
+    }
+
+    // Copy: Ctrl+C or Cmd+C
+    if (isModifier && e.key === 'c') {
+      e.preventDefault()
+      this.handleCopy()
+      return
+    }
+
+    // Cut: Ctrl+X or Cmd+X
+    if (isModifier && e.key === 'x') {
+      e.preventDefault()
+      this.handleCut()
+      return
+    }
+
+    // Paste: Ctrl+V or Cmd+V
+    if (isModifier && e.key === 'v') {
+      e.preventDefault()
+      this.handlePaste()
+    }
+  }
+
+  /**
+   * Set up clipboard and undo/redo event handlers
+   */
+  setupClipboardHandlers () {
+    // Global keyboard listener for copy/paste/undo/redo
+    document.addEventListener('keydown', (e) => {
+      this.handleKeyboardShortcut(e)
+    })
+
+    // Also support native paste event for external clipboard data
+    document.addEventListener('paste', (e) => {
+      if (!this.isSpreadsheetFocus()) { return }
+
+      e.preventDefault()
+      const clipboardData = e.clipboardData?.getData('text/plain')
+      if (clipboardData) {
+        this.handlePaste(clipboardData)
+      }
+    })
+  }
+
+  /**
+   * Get the selection range (supports single cell or future multi-cell selection)
+   */
+  getSelectionRange () {
+    if (!this.currentCell) { return null }
+
+    // For now, just return current cell as both start and end
+    // Later this will support multi-cell selection
+    const coord = a1ToCoord(this.currentCell)
+    return {
+      startRow: coord.row,
+      startCol: coord.col,
+      endRow: coord.row,
+      endCol: coord.col
+    }
+  }
+
+  /**
+   * Handle copy operation
+   */
+  handleCopy () {
+    const range = this.getSelectionRange()
+    if (!range) { return }
+
+    // Build 2D array of cell data
+    const data = []
+    for (let row = range.startRow; row <= range.endRow; row++) {
+      const rowData = []
+      for (let col = range.startCol; col <= range.endCol; col++) {
+        const coord = coordToA1(row, col)
+        const cell = this.engine.getCell(coord)
+        // Store the formula if it exists, otherwise the value
+        rowData.push(cell.formula || cell.value || '')
+      }
+      data.push(rowData)
+    }
+
+    // Store internally
+    this.copiedData = {
+      data,
+      startRow: range.startRow,
+      startCol: range.startCol,
+      rows: range.endRow - range.startRow + 1,
+      cols: range.endCol - range.startCol + 1
+    }
+
+    // Convert to TSV format for system clipboard
+    const tsvData = data.map(row => row.join('\t')).join('\n')
+
+    // Copy to system clipboard
+    navigator.clipboard.writeText(tsvData).then(() => {
+      // Visual feedback
+      this.showClipboardFeedback('Copied!')
+    }).catch(() => {
+      // Fallback: at least we have internal copiedData
+      this.showClipboardFeedback('Copied (internal only)')
+    })
+  }
+
+  /**
+   * Handle cut operation (copy + clear)
+   */
+  handleCut () {
+    const range = this.getSelectionRange()
+    if (!range) { return }
+
+    // First copy
+    this.handleCopy()
+
+    // Then clear the cells
+    for (let row = range.startRow; row <= range.endRow; row++) {
+      for (let col = range.startCol; col <= range.endCol; col++) {
+        const coord = coordToA1(row, col)
+        this.engine.clearCell(coord)
+        
+        // Explicitly clear the input value if this cell is currently focused
+        // This makes cut operations immediately visible
+        const input = document.getElementById(`cell-${coord}`)
+        if (input && document.activeElement === input) {
+          input.value = ''
+        }
+      }
+    }
+
+    this.showClipboardFeedback('Cut!')
+  }
+
+  /**
+   * Handle paste operation
+   *
+   * @param {string} [externalData] - Optional external clipboard data
+   */
+  handlePaste (externalData) {
+    if (!this.currentCell) { return }
+
+    let dataToPaste
+
+    if (externalData) {
+      // Parse TSV data from external clipboard
+      dataToPaste = this.parseTSVData(externalData)
+    } else if (this.copiedData) {
+      // Use internal copied data
+      dataToPaste = this.copiedData.data
+    } else {
+      // Nothing to paste
+      return
+    }
+
+    // Get paste starting position
+    const startCoord = a1ToCoord(this.currentCell)
+
+    // Paste data
+    for (let rowOffset = 0; rowOffset < dataToPaste.length; rowOffset++) {
+      const row = startCoord.row + rowOffset
+      if (row >= this.gridSize.rows) { break } // Don't paste beyond grid
+
+      for (let colOffset = 0; colOffset < dataToPaste[rowOffset].length; colOffset++) {
+        const col = startCoord.col + colOffset
+        if (col >= this.gridSize.cols) { break } // Don't paste beyond grid
+
+        const coord = coordToA1(row, col)
+        const value = dataToPaste[rowOffset][colOffset]
+
+        if (value === '') {
+          this.engine.clearCell(coord)
+        } else {
+          this.engine.setCell(coord, value)
+        }
+        
+        // Explicitly update the input value if this cell is currently focused
+        // This makes pasted values immediately visible
+        const input = document.getElementById(`cell-${coord}`)
+        if (input && document.activeElement === input) {
+          // Set the value directly (we know what we're pasting)
+          // For formulas, show the formula; for values, show the value
+          if (typeof value === 'string' && value.startsWith('=')) {
+            input.value = value // Show formula when focused
+          } else {
+            input.value = value // Show value when focused
+          }
+        }
+      }
+    }
+
+    this.showClipboardFeedback('Pasted!')
+  }
+
+  /**
+   * Parse TSV (tab-separated values) data into 2D array
+   *
+   * @param {string} tsvData - TSV formatted string
+   * @returns {string[][]} 2D array of cell values
+   */
+  parseTSVData (tsvData) {
+    const lines = tsvData.split(/\r?\n/)
+    return lines.map(line => line.split('\t'))
+  }
+
+  /**
+   * Show temporary clipboard feedback message
+   *
+   * @param {string} message - Message to show
+   */
+  showClipboardFeedback (message) {
+    // Create or reuse feedback element
+    let feedback = document.getElementById('clipboard-feedback')
+    if (!feedback) {
+      feedback = document.createElement('div')
+      feedback.id = 'clipboard-feedback'
+      feedback.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #4caf50;
+        color: white;
+        padding: 12px 20px;
+        border-radius: 4px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        z-index: 10000;
+        font-size: 14px;
+        font-weight: 500;
+        transition: opacity 0.3s;
+      `
+      document.body.appendChild(feedback)
+    }
+
+    feedback.textContent = message
+    feedback.style.opacity = '1'
+
+    // Clear any existing timeout
+    if (this.feedbackTimeout) {
+      clearTimeout(this.feedbackTimeout)
+    }
+
+    // Hide after 2 seconds
+    this.feedbackTimeout = setTimeout(() => {
+      feedback.style.opacity = '0'
+    }, 2000)
+  }
+
+  /**
+   * Handle undo operation
+   */
+  handleUndo () {
+    const success = this.engine.undo()
+    if (success) {
+      this.showClipboardFeedback('Undo')
+
+      // Update the currently focused cell display if needed
+      if (this.currentCell) {
+        const input = document.getElementById(`cell-${this.currentCell}`)
+        if (input && document.activeElement !== input) {
+          // Blur focused inputs to ensure synced values are displayed
+          if (document.activeElement?.id?.startsWith('cell-')) {
+            document.activeElement.blur()
+          }
+        }
+      }
+    } else {
+      this.showClipboardFeedback('Nothing to undo')
+    }
+  }
+
+  /**
+   * Handle redo operation
+   */
+  handleRedo () {
+    const success = this.engine.redo()
+    if (success) {
+      this.showClipboardFeedback('Redo')
+
+      // Update the currently focused cell display if needed
+      if (this.currentCell) {
+        const input = document.getElementById(`cell-${this.currentCell}`)
+        if (input && document.activeElement !== input) {
+          // Blur focused inputs to ensure synced values are displayed
+          if (document.activeElement?.id?.startsWith('cell-')) {
+            document.activeElement.blur()
+          }
+        }
+      }
+    } else {
+      this.showClipboardFeedback('Nothing to redo')
+    }
   }
 }
