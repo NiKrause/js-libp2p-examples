@@ -17,12 +17,16 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] }
+      use: {
+        ...devices['Desktop Chrome'],
+        permissions: ['clipboard-read', 'clipboard-write']
+      }
     },
     {
       name: 'firefox',
       use: {
         ...devices['Desktop Firefox'],
+        permissions: ['clipboard-read', 'clipboard-write'],
         // Enable WebRTC and STUN in Firefox for Playwright
         // Note: Firefox doesn't support Playwright's permissions API like Chromium
         // Instead, we use firefoxUserPrefs to configure permissions
@@ -70,7 +74,10 @@ export default defineConfig({
     },
     {
       name: 'webkit',
-      use: { ...devices['Desktop Safari'] }
+      use: {
+        ...devices['Desktop Safari'],
+        permissions: ['clipboard-read', 'clipboard-write']
+      }
     }
   ],
   webServer: {

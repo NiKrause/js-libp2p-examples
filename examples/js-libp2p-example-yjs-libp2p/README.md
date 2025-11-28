@@ -160,11 +160,33 @@ The provider uses three message types:
 
 ## Key Features
 
+### Networking
 - **WebRTC Direct**: Faster peer-to-peer connections with automatic NAT traversal via DCUTR
 - **WebSocket**: Reliable relay-based connections when direct connections aren't possible
 - **Direct Peer-to-Peer**: Real-time document sync directly between browsers via WebRTC
 - **Relay-based**: Falls back to relay server for coordination when direct connections fail
 - **Efficient Updates**: Uses Yjs's state-based CRDT for minimal bandwidth usage
+
+### Spreadsheet Features
+- **Formulas**: Support for cell references (`=A1+B1`) and range functions (`=SUM(A1:A10)`)
+- **Automatic Recalculation**: Formulas update automatically when dependencies change
+- **Circular Reference Detection**: Prevents infinite calculation loops
+- **Copy/Cut/Paste**: Full clipboard support with keyboard shortcuts (Ctrl+C/X/V)
+- **Undo/Redo**: Full undo/redo history using Yjs's built-in undo manager (Ctrl+Z/Y)
+- **Keyboard Navigation**: Arrow keys, Tab, Enter, and Escape for efficient editing
+- **Formula Bar**: Excel-like formula input bar
+- **Real-time Collaboration**: All changes sync instantly across all connected peers
+
+### Keyboard Shortcuts
+- `Ctrl+C` / `Cmd+C` - Copy cell
+- `Ctrl+X` / `Cmd+X` - Cut cell
+- `Ctrl+V` / `Cmd+V` - Paste cell
+- `Ctrl+Z` / `Cmd+Z` - Undo last change
+- `Ctrl+Y` / `Cmd+Y` / `Ctrl+Shift+Z` - Redo undone change
+- `Enter` - Move to cell below
+- `Tab` / `Shift+Tab` - Move right/left
+- `Arrow keys` - Navigate between cells
+- `Esc` - Cancel editing and revert changes
 
 ## Need help?
 
