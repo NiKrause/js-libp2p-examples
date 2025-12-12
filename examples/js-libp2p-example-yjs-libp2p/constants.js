@@ -41,3 +41,12 @@ export const RELAY_CONFIG = {
 export const DEFAULTS = {
   TOPIC: 'yjs-doc-1'
 }
+
+// Universal Connectivity topics (for interop with UC chat app)
+export const UC_CHAT_TOPIC = 'universal-connectivity'
+export const UC_FILE_TOPIC = 'universal-connectivity-file'
+export const FILE_EXCHANGE_PROTOCOL = '/universal-connectivity-file/1'
+export const DISCOVERY_CONFIG = {
+  INTERVAL: 10000,
+  TOPICS: ['universal-connectivity-browser-peer-discovery'] // '_peer-discovery._p2p._pubsub'
+}

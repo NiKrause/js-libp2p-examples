@@ -28,13 +28,10 @@
         flex: 1;
       }
       #peers {
-        background: #f5f5f5;
-        padding: 1rem;
-        border-radius: 4px;
-        margin-bottom: 1rem;
+        background: #fff;
       }
-      #peers h3 {
-        margin-top: 0;
+      #peer-list {
+        background: #f5f5f5;
       }
       .peer {
         margin: 0.5rem 0;
@@ -44,7 +41,9 @@
       }
       .peer-id {
         font-family: ui-monospace, monospace;
-        font-size: 0.9em;
+        font-size: 0.8em;
+        word-break: break-all;
+        color: #1565c0;
       }
       .transport {
         display: inline-block;
@@ -163,17 +162,10 @@
         font-weight: 600;
       }
       #multiaddrs {
-        margin-top: 1rem;
-        padding: 1rem;
-        background: #f0f7ff;
-        border: 1px solid #90caf9;
-        border-radius: 4px;
+        background: #fff;
       }
-      #multiaddrs h3 {
-        margin-top: 0;
-        font-family: system-ui;
-        font-size: 1em;
-        margin-bottom: 0.5rem;
+      #multiaddrs .accordion-content > div {
+        background: #f0f7ff;
       }
       #multiaddr-select {
         width: 100%;
@@ -186,19 +178,11 @@
       }
       /* Chat styles */
       #chat-panel {
-        margin-top: 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        overflow: hidden;
+        background: #fff;
+      }
+      #chat-panel .accordion-content {
         display: flex;
         flex-direction: column;
-        max-height: 400px;
-      }
-      #chat-panel h3 {
-        margin: 0;
-        padding: 0.75rem 1rem;
-        background: #f5f5f5;
-        border-bottom: 1px solid #ddd;
       }
       #chat-messages {
         flex: 1;
@@ -206,6 +190,7 @@
         padding: 1rem;
         background: white;
         min-height: 150px;
+        max-height: 200px;
       }
       .chat-message {
         margin-bottom: 0.75rem;
@@ -261,6 +246,54 @@
         background: #ccc;
         cursor: not-allowed;
       }
+
+      /* Accordion styles */
+      .accordion {
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        margin-top: 1rem;
+        overflow: hidden;
+      }
+      .accordion-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        background: #f5f5f5;
+        cursor: pointer;
+        user-select: none;
+        border: none;
+        width: 100%;
+        text-align: left;
+        font-family: inherit;
+        font-size: inherit;
+      }
+      .accordion-header:hover {
+        background: #ebebeb;
+      }
+      .accordion-header h3 {
+        margin: 0;
+        font-size: 1em;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .accordion-icon {
+        font-size: 0.8em;
+        transition: transform 0.2s ease;
+      }
+      .accordion.collapsed .accordion-icon {
+        transform: rotate(-90deg);
+      }
+      .accordion-content {
+        transition: max-height 0.3s ease, padding 0.3s ease;
+        overflow: hidden;
+      }
+      .accordion.collapsed .accordion-content {
+        max-height: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+      }
     </style>
   </head>
   <body>
@@ -278,11 +311,6 @@
         <button id="connect-websocket">Connect via WebSocket</button>
       </div>
       <div id="connection-mode" style="margin-top: 0.5rem; font-size: 0.9em; color: #666;"></div>
-    </div>
-
-    <div id="peers" style="display: none">
-      <h3>Connected Peers (<span id="peer-count">0</span>)</h3>
-      <div id="peer-list"></div>
     </div>
 
     <div id="formula-bar" style="display: none">
@@ -309,32 +337,59 @@
       </ul>
     </div>
 
-    <div id="multiaddrs" style="display: none">
-      <h3>My Multiaddresses</h3>
-      <select id="multiaddr-select" size="5"></select>
-    </div>
-
-    <div id="chat-panel" style="display: none">
-      <h3>Chat</h3>
-      <div id="chat-messages"></div>
-      <div id="chat-input-area">
-        <input 
-          id="chat-message-input" 
-          type="text" 
-          placeholder="Type a message... (or use sendMessage('hello') in console)"
-          disabled
-        />
-        <button id="chat-send-button" disabled>Send</button>
+    <!-- Chat accordion (top) -->
+    <div id="chat-panel" class="accordion collapsed" style="display: none;">
+      <button class="accordion-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <h3><span class="accordion-icon">▼</span> Chat</h3>
+      </button>
+      <div class="accordion-content" style="max-height: 350px;">
+        <div id="chat-messages"></div>
+        <div id="chat-input-area">
+          <input 
+            id="chat-message-input" 
+            type="text" 
+            placeholder="Type a message... (or use sendMessage('hello') in console)"
+            disabled
+          />
+          <button id="chat-send-button" disabled>Send</button>
+        </div>
       </div>
     </div>
 
-    <div style="margin-top: 1rem;">
-      <h3>Activity Log</h3>
-      <textarea 
-        id="log" 
-        readonly 
-        style="width: 100%; height: 200px; font-family: ui-monospace, monospace; font-size: 0.9em; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; resize: vertical; background: #f9f9f9;"
-      ></textarea>
+    <!-- Multiaddresses accordion -->
+    <div id="multiaddrs" class="accordion collapsed" style="display: none;">
+      <button class="accordion-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <h3><span class="accordion-icon">▼</span> My Multiaddresses</h3>
+      </button>
+      <div class="accordion-content" style="max-height: 200px;">
+        <div style="padding: 1rem;">
+          <select id="multiaddr-select" size="5"></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Connected Peers accordion -->
+    <div id="peers" class="accordion collapsed" style="display: none;">
+      <button class="accordion-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <h3><span class="accordion-icon">▼</span> Connected Peers (<span id="peer-count">0</span>)</h3>
+      </button>
+      <div class="accordion-content" style="max-height: 400px; overflow-y: auto;">
+        <div id="peer-list" style="padding: 1rem;"></div>
+      </div>
+    </div>
+
+    <!-- Activity Log accordion -->
+    <div class="accordion collapsed">
+      <button class="accordion-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <h3><span class="accordion-icon">▼</span> Activity Log</h3>
+      </button>
+      <div class="accordion-content" style="max-height: 250px;">
+        <textarea 
+          id="log" 
+          readonly 
+          style="width: 100%; height: 200px; font-family: ui-monospace, monospace; font-size: 0.9em; padding: 0.5rem; border: none; border-top: 1px solid #ddd; resize: vertical; background: #f9f9f9; box-sizing: border-box;"
+        ></textarea>
+      </div>
     </div>
 
     <script type="module" src="./index.js"></script>

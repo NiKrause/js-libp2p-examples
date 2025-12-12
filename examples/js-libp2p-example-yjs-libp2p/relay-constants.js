@@ -33,7 +33,7 @@ export const CONNECTION_CONFIG = {
 // Peer discovery configuration
 export const DISCOVERY_CONFIG = {
   INTERVAL: 10000,
-  TOPICS: ['_peer-discovery._p2p._pubsub']
+  TOPICS: ['universal-connectivity-browser-peer-discovery'] // '_peer-discovery._p2p._pubsub'
 }
 
 // Monitoring intervals (milliseconds)

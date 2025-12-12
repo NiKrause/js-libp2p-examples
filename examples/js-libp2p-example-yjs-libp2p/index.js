@@ -8,13 +8,14 @@ import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
 import { dcutr } from '@libp2p/dcutr'
 import { gossipsub } from '@libp2p/gossipsub'
 import { identify, identifyPush } from '@libp2p/identify'
+import { kadDHT, removePrivateAddressesMapper } from '@libp2p/kad-dht'
 import { ping } from '@libp2p/ping'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
 import { createLibp2p } from 'libp2p'
 import * as Y from 'yjs'
-import { DEBUG, TIMEOUTS, INTERVALS } from './constants.js'
+import { DEBUG, TIMEOUTS, INTERVALS, UC_CHAT_TOPIC, UC_FILE_TOPIC, DISCOVERY_CONFIG } from './constants.js'
 import {
   getTransportType,
   updatePeerDisplay,
@@ -166,17 +167,19 @@ async function connectWithTransports (mode = 'webrtc') {
       webRTCDirect({
         rtcConfiguration: {
           iceServers: [
-            // { urls: ['stun:stun.l.google.com:19302'] },
-            // { urls: ['stun:stun1.l.google.com:19302'] }
+            { urls: ['stun:stun.l.google.com:19302'] },
+            { urls: ['stun:stun1.l.google.com:19302'] }
           ]
         }
       }),
       webRTC({
         rtcConfiguration: {
-          iceServers: [
-            // { urls: ['stun:stun.l.google.com:19302'] },
-            // { urls: ['stun:stun1.l.google.com:19302'] }
-          ]
+          iceServers: [{
+            urls: [
+              'stun:stun.l.google.com:19302',
+              'stun:global.stun.twilio.com:3478'
+            ]
+          }]
         }
       }),
       circuitRelayTransport({
@@ -208,6 +211,7 @@ async function connectWithTransports (mode = 'webrtc') {
           list: bootstrapAddresses  // Use dynamically fetched addresses
         }),
         pubsubPeerDiscovery({
+          topics: DISCOVERY_CONFIG.TOPICS,
           interval: INTERVALS.PUBSUB_PEER_DISCOVERY
         })
       ],
@@ -220,6 +224,10 @@ async function connectWithTransports (mode = 'webrtc') {
         pubsub: gossipsub({
           emitSelf: false,
           allowPublishToZeroTopicPeers: true
+        }),
+        dht: kadDHT({
+          protocol: '/ipfs/kad/1.0.0',  // Amino DHT protocol for UC interop
+          peerInfoMapper: removePrivateAddressesMapper
         })
       }
     })
@@ -258,7 +266,8 @@ async function connectWithTransports (mode = 'webrtc') {
     log('Ready! Open this page in another tab to collaborate.')
 
     // Expose sendMessage function to console
-    window.sendMessage = async (text, topic = topicInput.value.trim()) => {
+    // Publishes to UC chat topic with UC-compatible format (raw text only)
+    window.sendMessage = async (text) => {
       if (!libp2pNode) {
         console.error('❌ Not connected yet')
         return
@@ -268,17 +277,13 @@ async function connectWithTransports (mode = 'webrtc') {
         return
       }
       try {
-        const message = {
-          type: 'chat',
-          text,
-          timestamp: Date.now()
-        }
+        // UC chat message format: raw text only (peerId comes from gossipsub event)
         const encoder = new TextEncoder()
-        const bytes = encoder.encode(JSON.stringify(message))
-        await libp2pNode.services.pubsub.publish(topic, bytes)
+        const bytes = encoder.encode(text)
+        await libp2pNode.services.pubsub.publish(UC_CHAT_TOPIC, bytes)
         // Display message immediately in chat
         displayChatMessage(text, true)
-        console.log(`✅ Message sent to topic "${topic}": "${text}"`)
+        console.log(`✅ Message sent to UC topic "${UC_CHAT_TOPIC}": "${text}"`)
       } catch (err) {
         console.error(`❌ Failed to send: ${err.message}`)
       }
@@ -288,48 +293,83 @@ async function connectWithTransports (mode = 'webrtc') {
     updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
     updateMultiaddrDisplay(libp2pNode, multiaddrsEl, multiaddrSelectEl)
 
-    // Show and enable chat panel
-    chatPanelEl.style.display = 'flex'
+    // Show and enable chat panel (accordion)
+    chatPanelEl.style.display = 'block'
     chatMessageInputEl.disabled = false
     chatSendButtonEl.disabled = false
 
-    // Listen for incoming chat messages on pubsub (BEFORE subscribe)
+    // Listen for ALL incoming pubsub messages for debugging
     libp2pNode.services.pubsub.addEventListener('message', (event) => {
       const incomingTopic = event.detail.topic
-      const currentTopic = topicInput.value.trim()
+      const fromPeer = event.detail.from?.toString() || 'unknown'
+      const fromShort = fromPeer.slice(0, 8) + '...' + fromPeer.slice(-4)
 
-      console.log(`📨 Pubsub message received on topic: "${incomingTopic}" (looking for: "${currentTopic}")`)
+      console.log(`📨 Pubsub [${incomingTopic}] from ${fromShort}:`, {
+        topic: incomingTopic,
+        from: fromPeer,
+        dataLength: event.detail.data?.length
+      })
 
-      // Only display messages from the current topic
-      if (incomingTopic !== currentTopic) {
-        console.log(`⏭️  Skipping message - topic mismatch`)
-        return
-      }
-
+      // Try to decode and log the message content
       try {
         const decoder = new TextDecoder()
         const messageText = decoder.decode(event.detail.data)
-        const messageObj = JSON.parse(messageText)
 
-        console.log(`✅ Parsed message:`, messageObj)
-
-        // Display chat messages only
-        if (messageObj.type === 'chat') {
-          displayChatMessage(messageObj.text, false)
+        // Handle UC chat messages (raw text format)
+        if (incomingTopic === UC_CHAT_TOPIC) {
+          console.log(`   💬 UC Chat: ${messageText}`)
+          displayChatMessage(`[${fromShort}] ${messageText}`, false)
+        } else {
+          // Try to parse as JSON for other topics
+          try {
+            const messageObj = JSON.parse(messageText)
+            console.log('   📦 JSON:', messageObj)
+          } catch {
+            // Not JSON, log raw text (truncated)
+            const preview = messageText.length > 100 ? messageText.slice(0, 100) + '...' : messageText
+            console.log(`   📝 Text: ${preview}`)
+          }
         }
       } catch (err) {
-        // Ignore non-chat messages
+        console.log(`   ⚠️ Binary data (${event.detail.data?.length} bytes)`)
       }
     })
 
-    // Subscribe to the topic to receive messages
+    // Subscribe to the Yjs document topic to receive messages
     libp2pNode.services.pubsub.subscribe(topic)
+
+    // Subscribe to Universal Connectivity topics for interop
+    libp2pNode.services.pubsub.subscribe(UC_CHAT_TOPIC)
+    libp2pNode.services.pubsub.subscribe(UC_FILE_TOPIC)
+    log(`Subscribed to UC topics: ${UC_CHAT_TOPIC}, ${UC_FILE_TOPIC}`)
+
+    // Log all subscribed topics (including peer discovery)
+    setTimeout(() => {
+      const topics = libp2pNode.services.pubsub.getTopics()
+      console.log('📋 All subscribed PubSub topics:', topics)
+      log(`PubSub topics: ${topics.join(', ')}`)
+    }, 2000)
+
+    // Listen for subscription changes from other peers
+    libp2pNode.services.pubsub.addEventListener('subscription-change', (evt) => {
+      const peerId = evt.detail.peerId.toString()
+      const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
+      const subscriptions = evt.detail.subscriptions
+
+      console.log(`🔔 Subscription change from ${peerIdShort}:`, subscriptions)
+
+      for (const sub of subscriptions) {
+        const action = sub.subscribe ? '✅ subscribed to' : '❌ unsubscribed from'
+        console.log(`   ${action} "${sub.topic}"`)
+        log(`${peerIdShort} ${action} ${sub.topic}`)
+      }
+    })
 
     // Send message from input field
     chatSendButtonEl.onclick = async () => {
       const text = chatMessageInputEl.value.trim()
       if (text) {
-        await window.sendMessage(text, topic)
+        await window.sendMessage(text)
         chatMessageInputEl.value = ''
       }
     }
@@ -339,7 +379,7 @@ async function connectWithTransports (mode = 'webrtc') {
       if (e.key === 'Enter') {
         const text = chatMessageInputEl.value.trim()
         if (text) {
-          await window.sendMessage(text, topic)
+          await window.sendMessage(text)
           chatMessageInputEl.value = ''
         }
       }
@@ -347,16 +387,35 @@ async function connectWithTransports (mode = 'webrtc') {
 
     // Auto-dial discovered peers
     libp2pNode.addEventListener('peer:discovery', async (evt) => {
-      const peerId = evt.detail.id
+      const peerInfo = evt.detail
+      const peerId = peerInfo.id
+      const peerIdStr = peerId.toString()
+      const peerIdShort = peerIdStr.slice(0, 8) + '...' + peerIdStr.slice(-4)
+
+      // Log discovered peer with multiaddrs
+      const multiaddrs = peerInfo.multiaddrs || []
+      console.log(`🔍 Peer discovered: ${peerIdShort}`, {
+        peerId: peerIdStr,
+        multiaddrs: multiaddrs.map(ma => ma.toString())
+      })
+      log(`🔍 Discovered: ${peerIdShort} (${multiaddrs.length} addrs)`)
 
       if (libp2pNode.getConnections(peerId).length > 0) {
+        console.log(`⏭️ Already connected to ${peerIdShort}`)
         return
       }
 
+      // Log dialing attempt
+      log(`📞 Dialing: ${peerIdShort}...`)
+      console.log(`📞 Dialing ${peerIdShort} with ${multiaddrs.length} multiaddrs...`)
+
       try {
         await libp2pNode.dial(peerId)
+        log(`✅ Dialed: ${peerIdShort}`)
+        console.log(`✅ Successfully dialed ${peerIdShort}`)
       } catch (err) {
-        // Dial failures are normal and logged elsewhere
+        log(`❌ Dial failed: ${peerIdShort} - ${err.message}`)
+        console.log(`❌ Failed to dial ${peerIdShort}: ${err.message}`)
       }
     })
 

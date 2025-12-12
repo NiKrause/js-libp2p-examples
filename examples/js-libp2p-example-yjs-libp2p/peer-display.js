@@ -137,8 +137,14 @@ export function updatePeerDisplay (libp2pNode, peerCountEl, peersEl, peerListEl)
 
     const peerIdSpan = document.createElement('div')
     peerIdSpan.className = 'peer-id'
-    peerIdSpan.textContent = `${peerId.slice(0, 8)}...${peerId.slice(-4)}`
-    peerIdSpan.title = peerId // Full peer ID on hover
+    peerIdSpan.textContent = peerId // Show full peer ID
+    peerIdSpan.title = 'Click to copy'
+    peerIdSpan.style.cursor = 'pointer'
+    peerIdSpan.onclick = () => {
+      navigator.clipboard.writeText(peerId)
+      peerIdSpan.textContent = 'Copied!'
+      setTimeout(() => { peerIdSpan.textContent = peerId }, 1000)
+    }
     peerDiv.appendChild(peerIdSpan)
 
     const transportDiv = createTransportBadges(transports)
