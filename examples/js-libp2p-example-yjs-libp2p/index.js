@@ -39,6 +39,10 @@ const multiaddrsEl = document.getElementById('multiaddrs')
 const multiaddrSelectEl = document.getElementById('multiaddr-select')
 const peerIdDisplayEl = document.getElementById('peer-id-display')
 const peerIdValueEl = document.getElementById('peer-id-value')
+const chatPanelEl = document.getElementById('chat-panel')
+const chatMessagesEl = document.getElementById('chat-messages')
+const chatMessageInputEl = document.getElementById('chat-message-input')
+const chatSendButtonEl = document.getElementById('chat-send-button')
 
 let libp2pNode
 let yjsDoc
@@ -70,6 +74,37 @@ const log = (message, isError = false) => {
   } else {
     logEl.style.color = 'inherit'
   }
+}
+
+/**
+ * Displays a chat message in the chat panel.
+ *
+ * @param {string} text - Message text
+ * @param {boolean} [isSent] - Whether this is a sent message (true) or received (false)
+ */
+const displayChatMessage = (text, isSent = false) => {
+  const messageEl = document.createElement('div')
+  messageEl.className = `chat-message ${isSent ? 'sent' : 'received'}`
+
+  const headerEl = document.createElement('div')
+  headerEl.className = 'chat-message-header'
+  headerEl.textContent = isSent ? '📤 You' : '📥 Peer'
+
+  const textEl = document.createElement('div')
+  textEl.className = 'chat-message-text'
+  textEl.textContent = text
+
+  messageEl.appendChild(headerEl)
+  messageEl.appendChild(textEl)
+  chatMessagesEl.appendChild(messageEl)
+
+  // Scroll to latest message
+  chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight
+}
+
+// Initial stub - will be replaced when connected
+window.sendMessage = async (text, topic) => {
+  console.error('❌ Not connected yet. Please click "Connect" first.')
 }
 
 // Connect function with bootstrap address selection
@@ -222,9 +257,93 @@ async function connectWithTransports (mode = 'webrtc') {
 
     log('Ready! Open this page in another tab to collaborate.')
 
+    // Expose sendMessage function to console
+    window.sendMessage = async (text, topic = topicInput.value.trim()) => {
+      if (!libp2pNode) {
+        console.error('❌ Not connected yet')
+        return
+      }
+      if (!text) {
+        console.error('❌ Message text required')
+        return
+      }
+      try {
+        const message = {
+          type: 'chat',
+          text,
+          timestamp: Date.now()
+        }
+        const encoder = new TextEncoder()
+        const bytes = encoder.encode(JSON.stringify(message))
+        await libp2pNode.services.pubsub.publish(topic, bytes)
+        // Display message immediately in chat
+        displayChatMessage(text, true)
+        console.log(`✅ Message sent to topic "${topic}": "${text}"`)
+      } catch (err) {
+        console.error(`❌ Failed to send: ${err.message}`)
+      }
+    }
+
     // Initial display updates
     updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
     updateMultiaddrDisplay(libp2pNode, multiaddrsEl, multiaddrSelectEl)
+
+    // Show and enable chat panel
+    chatPanelEl.style.display = 'flex'
+    chatMessageInputEl.disabled = false
+    chatSendButtonEl.disabled = false
+
+    // Listen for incoming chat messages on pubsub (BEFORE subscribe)
+    libp2pNode.services.pubsub.addEventListener('message', (event) => {
+      const incomingTopic = event.detail.topic
+      const currentTopic = topicInput.value.trim()
+
+      console.log(`📨 Pubsub message received on topic: "${incomingTopic}" (looking for: "${currentTopic}")`)
+
+      // Only display messages from the current topic
+      if (incomingTopic !== currentTopic) {
+        console.log(`⏭️  Skipping message - topic mismatch`)
+        return
+      }
+
+      try {
+        const decoder = new TextDecoder()
+        const messageText = decoder.decode(event.detail.data)
+        const messageObj = JSON.parse(messageText)
+
+        console.log(`✅ Parsed message:`, messageObj)
+
+        // Display chat messages only
+        if (messageObj.type === 'chat') {
+          displayChatMessage(messageObj.text, false)
+        }
+      } catch (err) {
+        // Ignore non-chat messages
+      }
+    })
+
+    // Subscribe to the topic to receive messages
+    libp2pNode.services.pubsub.subscribe(topic)
+
+    // Send message from input field
+    chatSendButtonEl.onclick = async () => {
+      const text = chatMessageInputEl.value.trim()
+      if (text) {
+        await window.sendMessage(text, topic)
+        chatMessageInputEl.value = ''
+      }
+    }
+
+    // Send message on Enter key
+    chatMessageInputEl.onkeypress = async (e) => {
+      if (e.key === 'Enter') {
+        const text = chatMessageInputEl.value.trim()
+        if (text) {
+          await window.sendMessage(text, topic)
+          chatMessageInputEl.value = ''
+        }
+      }
+    }
 
     // Auto-dial discovered peers
     libp2pNode.addEventListener('peer:discovery', async (evt) => {

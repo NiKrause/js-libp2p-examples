@@ -245,6 +245,16 @@ export class Libp2pProvider {
         case 'sync-response':
           this._handleSyncResponse(message.update)
           break
+        case 'chat':
+          // Emit chat message event for the UI to handle
+          this.libp2p.dispatchEvent(new CustomEvent('chat:message', {
+            detail: {
+              peerId: evt.detail.from.toString(),
+              text: message.text,
+              timestamp: message.timestamp
+            }
+          }))
+          break
         default:
           if (DEBUG) {
             // eslint-disable-next-line no-console
