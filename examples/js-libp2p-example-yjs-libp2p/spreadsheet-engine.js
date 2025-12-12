@@ -49,11 +49,12 @@ export function coordToA1 (row, col) {
 
 /**
  * Converts A1 notation to {row, col} indices
+ * Case-insensitive: accepts both 'A1' and 'a1'
  *
  * @param a1
  */
 export function a1ToCoord (a1) {
-  const match = a1.match(/^([A-Z]+)(\d+)$/)
+  const match = a1.toUpperCase().match(/^([A-Z]+)(\d+)$/)
   if (!match) { return null }
   return {
     col: letterToCol(match[1]),
@@ -124,37 +125,40 @@ export class SpreadsheetEngine {
    * @param value
    */
   setCell (coord, value) {
+    // Normalize coordinate to uppercase
+    const normalizedCoord = coord.toUpperCase()
+
     // Get or create a Yjs Map for this cell
-    let cellData = this.cells.get(coord)
+    let cellData = this.cells.get(normalizedCoord)
     if (!cellData) {
       cellData = new Y.Map()
-      this.cells.set(coord, cellData)
+      this.cells.set(normalizedCoord, cellData)
     }
 
     if (typeof value === 'string' && value.startsWith('=')) {
-      // It's a formula
-      const formula = value
+      // It's a formula - normalize to uppercase for consistent cell references
+      const formula = value.toUpperCase()
       const refs = this.extractReferences(formula)
 
       // Clear old dependencies (this cell's dependencies, not cells depending on this cell)
-      this.removeDependencies(coord)
+      this.removeDependencies(normalizedCoord)
 
       // Build dependency graph
       for (const ref of refs) {
         if (!this.dependencyGraph.has(ref)) {
           this.dependencyGraph.set(ref, new Set())
         }
-        this.dependencyGraph.get(ref).add(coord)
+        this.dependencyGraph.get(ref).add(normalizedCoord)
       }
 
       // Check for circular references
-      if (this.hasCircularReference(coord)) {
+      if (this.hasCircularReference(normalizedCoord)) {
         cellData.set('value', '#CIRCULAR!')
         cellData.set('formula', formula)
         cellData.set('error', true)
       } else {
         // Evaluate the formula
-        const result = this.evaluate(formula, coord)
+        const result = this.evaluate(formula, normalizedCoord)
         cellData.set('value', result)
         cellData.set('formula', formula)
         cellData.set('error', false)
@@ -163,7 +167,7 @@ export class SpreadsheetEngine {
       // Raw value - only clear dependencies if this cell previously had a formula
       const hadFormula = cellData.get('formula') != null
       if (hadFormula) {
-        this.removeDependencies(coord)
+        this.removeDependencies(normalizedCoord)
       }
 
       cellData.set('value', value)
@@ -174,11 +178,12 @@ export class SpreadsheetEngine {
 
   /**
    * Get cell data
+   * Case-insensitive: accepts both 'A1' and 'a1'
    *
    * @param coord
    */
   getCell (coord) {
-    const cellData = this.cells.get(coord)
+    const cellData = this.cells.get(coord.toUpperCase())
     if (!cellData) { return { value: '', formula: null, error: false } }
 
     return {
@@ -484,13 +489,15 @@ export class SpreadsheetEngine {
 
   /**
    * Clear a cell
+   * Case-insensitive: accepts both 'A1' and 'a1'
    *
    * @param coord
    */
   clearCell (coord) {
-    this.removeDependencies(coord)
-    this.cells.delete(coord)
-    this.notifyObservers(coord)
+    const normalizedCoord = coord.toUpperCase()
+    this.removeDependencies(normalizedCoord)
+    this.cells.delete(normalizedCoord)
+    this.notifyObservers(normalizedCoord)
   }
 }
 
