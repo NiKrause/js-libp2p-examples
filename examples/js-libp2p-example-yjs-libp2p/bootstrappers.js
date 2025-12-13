@@ -17,8 +17,10 @@
  * These require running `npm run relay` locally
  */
 const DEV_RELAYS = [
-  '/ip4/10.171.64.248/udp/9090/webrtc-direct/certhash/uEiAIbksoQ56yn3UPDn0k_abCkGBHCf79iUemkVXRn_Vy2g/p2p/12D3KooWM6VMihSpHj7T9xmdddEdKoFq4N3VuA3QTZPEwckrqcPK',
-  '/ip4/127.0.0.1/tcp/9092/ws/p2p/12D3KooWP9ryj8o6uLRhUV2SXJycuBrynakzbiUMBmTn3prF8ezb'
+  '/ip4/147.28.186.157/tcp/9095/tls/sni/147-28-186-157.k51qzi5uqu5did09qdbdg7jf0pydff1llcd6h4deiasuc7qyemy3v8bc1q1rlb.libp2p.direct/ws/p2p/12D3KooWFhXabKDwALpzqMbto94sB7rvmZ6M28hs9Y9xSopDKwQr'
+// TODO: Uncomment this when we have a public Universal Connectivity relay
+// '/ip4/10.171.64.248/udp/9090/webrtc-direct/certhash/uEiAIbksoQ56yn3UPDn0k_abCkGBHCf79iUemkVXRn_Vy2g/p2p/12D3KooWM6VMihSpHj7T9xmdddEdKoFq4N3VuA3QTZPEwckrqcPK',
+// '/ip4/127.0.0.1/tcp/9092/ws/p2p/12D3KooWP9ryj8o6uLRhUV2SXJycuBrynakzbiUMBmTn3prF8ezb'
 ]
 
 /**
