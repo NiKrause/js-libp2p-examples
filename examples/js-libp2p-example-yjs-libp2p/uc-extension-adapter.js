@@ -1,5 +1,9 @@
 /* eslint-disable no-console */
 
+import { pipe } from 'it-pipe'
+import * as lp from 'it-length-prefixed'
+import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string'
+import { toString as uint8ArrayToString } from 'uint8arrays/to-string'
 import manifest from './extension-manifest.json'
 
 /**
@@ -8,16 +12,14 @@ import manifest from './extension-manifest.json'
  * This adapter enables the spreadsheet to be used as an extension
  * within Universal Connectivity chat.
  * 
- * Features:
- * - Publishes extension manifest periodically on discovery topic
- * - Listens for commands on extension command topic
- * - Executes commands (show, write, list) on the spreadsheet
- * - Returns responses via pubsub
+ * Uses libp2p identify protocol for discovery and direct streams for communication:
+ * - Registers protocol /uc/extension/sheet/1.0.0
+ * - Discovery happens automatically via libp2p identify
+ * - Handles manifest requests and command execution via direct streams
  */
 
-const EXTENSION_DISCOVERY_TOPIC = 'universal-connectivity-extensions'
-const COMMAND_TOPIC = 'uc-ext-sheet-commands'
-const ANNOUNCE_INTERVAL = 30000 // 30 seconds
+// Protocol string following UC extension convention
+const EXTENSION_PROTOCOL = `/uc/extension/${manifest.id}/${manifest.version}`
 
 export class UCExtensionAdapter {
   /**
@@ -29,29 +31,20 @@ export class UCExtensionAdapter {
     this.libp2p = libp2p
     this.spreadsheetEngine = spreadsheetEngine
     this.topic = topic // Current spreadsheet room/topic
-    this.announceTimer = null
     this.topics = new Set([topic]) // Track all active topics
   }
 
   /**
-   * Start the extension adapter
+   * Start the extension adapter - register protocol handler
    */
   async start () {
     try {
-      // Subscribe to command topic
-      await this.libp2p.services.pubsub.subscribe(COMMAND_TOPIC)
-      console.log(`✅ UC Extension: Subscribed to ${COMMAND_TOPIC}`)
-
-      // Listen for commands
-      this.libp2p.services.pubsub.addEventListener('message', this.handleMessage.bind(this))
-
-      // Start announcing extension periodically
-      this.announceExtension()
-      this.announceTimer = setInterval(() => {
-        this.announceExtension()
-      }, ANNOUNCE_INTERVAL)
-
-      console.log('✅ UC Extension Adapter started')
+      // Register the extension protocol handler
+      // This makes the extension discoverable via libp2p identify
+      await this.libp2p.handle(EXTENSION_PROTOCOL, this.handleProtocol.bind(this))
+      console.log(`✅ UC Extension: Registered protocol ${EXTENSION_PROTOCOL}`)
+      console.log(`📦 Extension "${manifest.name}" is now discoverable via identify`)
+      console.log(`📍 Current spreadsheet topic: ${this.topic}`)
     } catch (error) {
       console.error('Failed to start UC extension adapter:', error)
       throw error
@@ -59,62 +52,74 @@ export class UCExtensionAdapter {
   }
 
   /**
-   * Stop the extension adapter
+   * Stop the extension adapter - unregister protocol handler
    */
-  stop () {
-    if (this.announceTimer) {
-      clearInterval(this.announceTimer)
-      this.announceTimer = null
-    }
-    this.libp2p.services.pubsub.removeEventListener('message', this.handleMessage.bind(this))
-    console.log('✅ UC Extension Adapter stopped')
-  }
-
-  /**
-   * Announce extension on discovery topic
-   */
-  async announceExtension () {
+  async stop () {
     try {
-      const message = {
-        type: 'offer',
-        manifest: manifest,
-        timestamp: Date.now()
-      }
-
-      const data = new TextEncoder().encode(JSON.stringify(message))
-      await this.libp2p.services.pubsub.publish(EXTENSION_DISCOVERY_TOPIC, data)
-      console.log('📢 UC Extension: Announced spreadsheet extension')
+      await this.libp2p.unhandle(EXTENSION_PROTOCOL)
+      console.log('✅ UC Extension Adapter stopped')
     } catch (error) {
-      console.error('Failed to announce extension:', error)
+      console.error('Failed to stop UC extension adapter:', error)
     }
   }
 
   /**
-   * Handle incoming pubsub messages
+   * Handle incoming protocol stream
    */
-  handleMessage (evt) {
-    const { topic, data } = evt.detail
-
-    // Only process messages from our command topic
-    if (topic !== COMMAND_TOPIC) {
-      return
-    }
-
-    // Only process signed messages
-    if (evt.detail.type !== 'signed') {
-      console.warn('UC Extension: Ignoring unsigned command message')
-      return
-    }
+  async handleProtocol ({ stream, connection }) {
+    const remotePeer = connection.remotePeer.toString()
+    console.log(`🔗 UC Extension: Stream from ${remotePeer.slice(-8)}`)
 
     try {
-      const messageText = new TextDecoder().decode(data)
-      const message = JSON.parse(messageText)
+      await pipe(
+        stream.source,
+        (source) => lp.decode(source),
+        async function * (source) {
+          for await (const data of source) {
+            const request = JSON.parse(uint8ArrayToString(data.subarray()))
+            console.log(`📨 UC Extension: Received ${request.type} from ${remotePeer.slice(-8)}`)
 
-      if (message.type === 'command') {
-        this.handleCommand(message)
-      }
+            let response
+            switch (request.type) {
+              case 'manifest-request':
+                response = this.handleManifestRequest(request)
+                break
+              case 'command':
+                response = await this.handleCommand(request)
+                break
+              default:
+                response = {
+                  type: 'response',
+                  requestId: request.requestId,
+                  success: false,
+                  error: `Unknown request type: ${request.type}`,
+                  timestamp: Date.now()
+                }
+            }
+
+            // Only send response if not null (null means silently ignore)
+            if (response !== null) {
+              yield uint8ArrayFromString(JSON.stringify(response))
+            }
+          }
+        }.bind(this),
+        (source) => lp.encode(source),
+        stream.sink
+      )
     } catch (error) {
-      console.error('UC Extension: Failed to parse command message:', error)
+      console.error('UC Extension: Protocol handler error:', error)
+    }
+  }
+
+  /**
+   * Handle manifest request
+   */
+  handleManifestRequest (request) {
+    console.log('📋 UC Extension: Sending manifest')
+    return {
+      type: 'manifest-response',
+      manifest: manifest,
+      timestamp: Date.now()
     }
   }
 
@@ -124,7 +129,7 @@ export class UCExtensionAdapter {
   async handleCommand (request) {
     const { command, args, requestId } = request
 
-    console.log(`🎯 UC Extension: Received command: ${command} ${args.join(' ')}`)
+    console.log(`🎯 UC Extension: Command: ${command} ${args.join(' ')}`)
 
     let response = {
       type: 'response',
@@ -157,19 +162,56 @@ export class UCExtensionAdapter {
       console.error(`UC Extension: Command error:`, error)
     }
 
-    // If response is null, silently ignore (another peer handles this topic)
-    if (response === null) {
-      console.log(`⏭️  UC Extension: Ignoring command (topic mismatch)`)
-      return
-    }
+    return response
+  }
 
-    // Send response
-    try {
-      const data = new TextEncoder().encode(JSON.stringify(response))
-      await this.libp2p.services.pubsub.publish(COMMAND_TOPIC, data)
-      console.log(`✅ UC Extension: Sent response for ${command}`)
-    } catch (error) {
-      console.error('UC Extension: Failed to send response:', error)
+  /**
+   * Handle help command: /sheet-help
+   */
+  async handleHelp (args, requestId) {
+    const helpText = `
+📊 ${manifest.name} v${manifest.version}
+${manifest.description}
+
+🌐 Open Spreadsheet UI: ${manifest.publicUrl}
+
+Available Commands:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/sheet-help
+  Show this help message
+
+/sheet-list
+  List all active spreadsheet topics
+
+/sheet-show <topic> <cell>
+  Show the value of a cell
+  Example: /sheet-show hackathon A1
+
+/sheet-write <topic> <cell>=<value>
+  Write a value to a cell
+  Example: /sheet-write hackathon A1=100
+
+/sheet-write <topic> <cell>=<formula>
+  Write a formula to a cell (start with =)
+  Example: /sheet-write hackathon B1==A1*2
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📍 Current topic: ${this.topic}
+👤 Author: ${manifest.author}
+🔗 Protocol: ${EXTENSION_PROTOCOL}
+`.trim()
+
+    return {
+      type: 'response',
+      requestId,
+      success: true,
+      data: {
+        help: helpText,
+        publicUrl: manifest.publicUrl,
+        commands: manifest.commands
+      },
+      timestamp: Date.now()
     }
   }
 
@@ -197,7 +239,7 @@ export class UCExtensionAdapter {
 
     // Get cell value
     const cell = this.spreadsheetEngine.getCell(cellRef)
-    
+
     return {
       type: 'response',
       requestId,
@@ -260,7 +302,7 @@ export class UCExtensionAdapter {
 
     // Write to cell
     this.spreadsheetEngine.setCell(cellRef, parsedValue)
-    
+
     // Get updated cell value
     const cell = this.spreadsheetEngine.getCell(cellRef)
 
@@ -289,55 +331,6 @@ export class UCExtensionAdapter {
       data: {
         topics: Array.from(this.topics),
         currentTopic: this.topic
-      },
-      timestamp: Date.now()
-    }
-  }
-
-  /**
-   * Handle help command: /sheet-help
-   */
-  async handleHelp (args, requestId) {
-    const helpText = `
-📊 ${manifest.name} v${manifest.version}
-${manifest.description}
-
-🌐 Open Spreadsheet UI: ${manifest.publicUrl}
-
-Available Commands:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-/sheet-help
-  Show this help message
-
-/sheet-list
-  List all active spreadsheet topics
-
-/sheet-show <topic> <cell>
-  Show the value of a cell
-  Example: /sheet-show hackathon A1
-
-/sheet-write <topic> <cell>=<value>
-  Write a value to a cell
-  Example: /sheet-write hackathon A1=100
-
-/sheet-write <topic> <cell>=<formula>
-  Write a formula to a cell (start with =)
-  Example: /sheet-write hackathon B1==A1*2
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📍 Current topic: ${this.topic}
-👤 Author: ${manifest.author}
-`.trim()
-
-    return {
-      type: 'response',
-      requestId,
-      success: true,
-      data: {
-        help: helpText,
-        publicUrl: manifest.publicUrl,
-        commands: manifest.commands
       },
       timestamp: Date.now()
     }
