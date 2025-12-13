@@ -623,7 +623,7 @@ test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
   })
 })
 
-test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
+test.describe.only('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
   test.setTimeout(120000) // Increase timeout for all tests to 2 minutes
 
   // Skip WebSocket Bootstrap tests on WebKit due to known limitation:

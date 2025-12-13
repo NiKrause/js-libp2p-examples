@@ -335,7 +335,7 @@ test.describe('Copy/Paste Feature', () => {
     await context2.close()
   })
 
-  test.only('should handle external clipboard data (TSV format)', async ({ browser, browserName }) => {
+  test('should handle external clipboard data (TSV format)', async ({ browser, browserName }) => {
     // Skip this test in WebKit due to clipboard API limitations
     test.skip(browserName === 'webkit', 'WebKit has limited clipboard API support')
 
