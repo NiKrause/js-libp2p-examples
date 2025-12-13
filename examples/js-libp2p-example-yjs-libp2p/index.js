@@ -29,8 +29,6 @@ import { Libp2pProvider } from './yjs-libp2p-provider.js'
 
 // UI elements (network and logging related)
 const topicInput = document.getElementById('topic')
-const connectWebRTCBtn = document.getElementById('connect-webrtc')
-const connectWebSocketBtn = document.getElementById('connect-websocket')
 const connectionModeEl = document.getElementById('connection-mode')
 const logEl = document.getElementById('log')
 const peersEl = document.getElementById('peers')
@@ -105,7 +103,7 @@ const displayChatMessage = (text, isSent = false) => {
 
 // Initial stub - will be replaced when connected
 window.sendMessage = async (text, topic) => {
-  console.error('❌ Not connected yet. Please click "Connect" first.')
+  console.error('❌ Not connected yet. Connection is in progress...')
 }
 
 // Connect function with bootstrap address selection
@@ -122,9 +120,6 @@ async function connectWithTransports (mode = 'webrtc') {
   }
 
   try {
-    connectWebRTCBtn.disabled = true
-    connectWebSocketBtn.disabled = true
-
     // Show connection mode
     connectionModeEl.textContent = mode === 'webrtc'
       ? '🔄 Fetching relay WebRTC-Direct addresses...'
@@ -508,8 +503,6 @@ async function connectWithTransports (mode = 'webrtc') {
     log(`Error: ${err.message}`, true)
 
     console.error('Connection error:', err)
-    connectWebRTCBtn.disabled = false
-    connectWebSocketBtn.disabled = false
     connectionModeEl.textContent = `❌ Connection failed (${mode} mode)`
     connectionModeEl.style.color = '#d32f2f'
 
@@ -525,9 +518,13 @@ async function connectWithTransports (mode = 'webrtc') {
   }
 }
 
-// Button handlers - specify bootstrap mode
-connectWebRTCBtn.onclick = () => connectWithTransports('webrtc')
-connectWebSocketBtn.onclick = () => connectWithTransports('websocket')
+// Auto-connect on page load with WebRTC mode (default)
+// Small delay to allow topic to be set programmatically for tests
+setTimeout(() => {
+  if (!libp2pNode) {
+    connectWithTransports('webrtc')
+  }
+}, 100)
 
 /**
  * Cleanup resources on page unload.
