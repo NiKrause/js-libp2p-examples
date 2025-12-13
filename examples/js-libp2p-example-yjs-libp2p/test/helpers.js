@@ -13,11 +13,58 @@ export async function connectToSpreadsheet (page, topic = 'test-topic', mode = '
   await page.fill('#topic', topic)
 
   // Auto-connect is now triggered on page load, so we just wait for readiness
-  // Wait for spreadsheet to appear and be ready
+  // Wait for spreadsheet to appear and be ready (updated for new layout)
   await page.waitForFunction(
-    () => document.getElementById('spreadsheet').style.display !== 'none' &&
-          document.getElementById('formula-input').disabled === false,
+    () => {
+      const spreadsheet = document.getElementById('spreadsheet')
+      const formulaInput = document.getElementById('formula-input')
+      const mainContent = document.querySelector('.main-content')
+      
+      // Check if main content is visible and spreadsheet exists with formula input enabled
+      return mainContent && 
+             spreadsheet && 
+             formulaInput && 
+             !formulaInput.disabled &&
+             mainContent.style.display !== 'none'
+    },
     { timeout: 15000 }
+  )
+}
+
+/**
+ * Helper to expand technical details accordion for log access
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page instance
+ */
+export async function expandTechnicalDetails (page) {
+  await page.evaluate(() => {
+    // Find the technical details panel by looking for the header text
+    const panels = document.querySelectorAll('.panel.collapsed')
+    for (const panel of panels) {
+      const headerText = panel.querySelector('.panel-header')?.textContent
+      if (headerText && headerText.includes('Peer-To-Peer Details')) {
+        const button = panel.querySelector('.panel-header')
+        if (button) button.click()
+        break
+      }
+    }
+  })
+}
+
+/**
+ * Helper to wait for ready state in logs (expands technical details first)
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page instance
+ * @param {number} [timeout] - Timeout in milliseconds
+ */
+export async function waitForReady (page, timeout = 15000) {
+  // Expand technical details to access log
+  await expandTechnicalDetails(page)
+  
+  // Wait for Ready! message in logs
+  await page.waitForFunction(
+    () => document.getElementById('log')?.value?.includes('Ready!'),
+    { timeout }
   )
 }
 
@@ -52,7 +99,8 @@ export async function waitForPeerConnection (page, timeout = 60000) {
         peerCount: document.querySelector('#peer-count')?.textContent,
         connectionMode: document.querySelector('#connection-mode')?.textContent,
         peerId: document.querySelector('#peer-id-value')?.textContent,
-        logContent: document.getElementById('log')?.value?.split('\n').slice(-10).join('\n')
+        logContent: document.getElementById('log')?.value?.split('\n').slice(-10).join('\n'),
+        mainContentVisible: document.querySelector('.main-content')?.style.display !== 'none'
       }
     })
 

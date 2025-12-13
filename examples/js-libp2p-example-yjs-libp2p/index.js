@@ -31,7 +31,7 @@ import { Libp2pProvider } from './yjs-libp2p-provider.js'
 const topicInput = document.getElementById('topic')
 const connectionModeEl = document.getElementById('connection-mode')
 const logEl = document.getElementById('log')
-const peersEl = document.getElementById('peers')
+const peersEl = document.getElementById('peers-panel')
 const peerCountEl = document.getElementById('peer-count')
 const peerListEl = document.getElementById('peer-list')
 const multiaddrsEl = document.getElementById('multiaddrs')
@@ -239,9 +239,7 @@ async function connectWithTransports (mode = 'webrtc') {
     window.libp2pNode = libp2pNode
 
     // Update connection mode display
-    connectionModeEl.textContent = mode === 'webrtc'
-      ? '✅ Bootstrap: WebRTC-Direct (all transports active)'
-      : '✅ Bootstrap: WebSocket (all transports active)'
+    connectionModeEl.textContent = '✅ Connected'
     connectionModeEl.style.color = '#4caf50'
 
     // Create Yjs document and spreadsheet engine
@@ -288,8 +286,8 @@ async function connectWithTransports (mode = 'webrtc') {
     updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
     updateMultiaddrDisplay(libp2pNode, multiaddrsEl, multiaddrSelectEl)
 
-    // Show and enable chat panel (accordion)
-    chatPanelEl.style.display = 'block'
+    // Show and enable chat panel (sidebar)
+    chatPanelEl.style.display = 'flex'
     chatMessageInputEl.disabled = false
     chatSendButtonEl.disabled = false
 
@@ -517,6 +515,277 @@ async function connectWithTransports (mode = 'webrtc') {
     }
   }
 }
+
+/**
+ * CSV utility functions
+ */
+
+/**
+ * Convert spreadsheet data to CSV format
+ * @returns {string} CSV formatted string
+ */
+function exportToCSV() {
+  if (!spreadsheetEngine) {
+    console.warn('Spreadsheet engine not available')
+    return ''
+  }
+
+  const allCells = spreadsheetEngine.getAllCells()
+  
+  // Find the bounds of the data
+  let maxRow = 0
+  let maxCol = 0
+  
+  for (const coord of allCells.keys()) {
+    const { row, col } = parseCoordinate(coord)
+    maxRow = Math.max(maxRow, row)
+    maxCol = Math.max(maxCol, col)
+  }
+  
+  if (maxRow === 0 && maxCol === 0) {
+    return '' // Empty spreadsheet
+  }
+  
+  // Build CSV rows
+  const rows = []
+  for (let row = 1; row <= maxRow; row++) {
+    const rowData = []
+    for (let col = 1; col <= maxCol; col++) {
+      const coord = columnNumberToLetter(col) + row
+      const cell = allCells.get(coord)
+      let value = ''
+      
+      if (cell) {
+        // Use display value (calculated result) instead of raw formula
+        value = cell.value !== undefined ? String(cell.value) : ''
+      }
+      
+      // Escape CSV values that contain commas, quotes, or newlines
+      if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+        value = '"' + value.replace(/"/g, '""') + '"'
+      }
+      
+      rowData.push(value)
+    }
+    rows.push(rowData.join(','))
+  }
+  
+  return rows.join('\n')
+}
+
+/**
+ * Parse CSV content and import it to the spreadsheet
+ * @param {string} csvContent - CSV formatted string
+ */
+function importFromCSV(csvContent) {
+  if (!spreadsheetEngine) {
+    console.warn('Spreadsheet engine not available')
+    return
+  }
+  
+  if (!csvContent.trim()) {
+    return
+  }
+  
+  // Simple CSV parser (handles quoted fields with commas)
+  const rows = []
+  const lines = csvContent.split('\n')
+  
+  for (const line of lines) {
+    if (!line.trim()) continue
+    
+    const row = []
+    let current = ''
+    let inQuotes = false
+    
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i]
+      
+      if (char === '"' && !inQuotes) {
+        inQuotes = true
+      } else if (char === '"' && inQuotes) {
+        if (line[i + 1] === '"') {
+          // Escaped quote
+          current += '"'
+          i++ // Skip next quote
+        } else {
+          inQuotes = false
+        }
+      } else if (char === ',' && !inQuotes) {
+        row.push(current)
+        current = ''
+      } else {
+        current += char
+      }
+    }
+    row.push(current) // Add final cell
+    rows.push(row)
+  }
+  
+  // Import the data
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const rowData = rows[rowIndex]
+    for (let colIndex = 0; colIndex < rowData.length; colIndex++) {
+      const value = rowData[colIndex].trim()
+      if (value) {
+        const coord = columnNumberToLetter(colIndex + 1) + (rowIndex + 1)
+        spreadsheetEngine.setCell(coord, value)
+      }
+    }
+  }
+  
+  log(`Imported ${rows.length} rows from CSV`)
+}
+
+/**
+ * Copy CSV to clipboard
+ */
+async function copyCSVToClipboard() {
+  const csvContent = exportToCSV()
+  if (!csvContent) {
+    alert('No data to copy')
+    return
+  }
+  
+  try {
+    await navigator.clipboard.writeText(csvContent)
+    log('CSV data copied to clipboard')
+    
+    // Visual feedback
+    const copyBtn = document.getElementById('csv-copy-btn')
+    if (copyBtn) {
+      const originalText = copyBtn.textContent
+      copyBtn.textContent = '✅ Copied!'
+      setTimeout(() => {
+        copyBtn.textContent = originalText
+      }, 2000)
+    }
+  } catch (err) {
+    console.error('Failed to copy to clipboard:', err)
+    alert('Failed to copy to clipboard. Try selecting and copying manually.')
+  }
+}
+
+/**
+ * Download CSV file
+ */
+function downloadCSV() {
+  const csvContent = exportToCSV()
+  if (!csvContent) {
+    alert('No data to export')
+    return
+  }
+  
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const link = document.createElement('a')
+  
+  if (link.download !== undefined) {
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `spreadsheet-${new Date().toISOString().slice(0, 10)}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+}
+
+/**
+ * Utility function to convert column number to letter (1 -> A, 2 -> B, etc.)
+ */
+function columnNumberToLetter(num) {
+  let result = ''
+  while (num > 0) {
+    num--
+    result = String.fromCharCode(65 + (num % 26)) + result
+    num = Math.floor(num / 26)
+  }
+  return result
+}
+
+/**
+ * Parse coordinate like "A1" to {row: 1, col: 1}
+ */
+function parseCoordinate(coord) {
+  const match = coord.match(/^([A-Z]+)(\d+)$/)
+  if (!match) return { row: 0, col: 0 }
+  
+  const colStr = match[1]
+  const row = parseInt(match[2])
+  
+  let col = 0
+  for (let i = 0; i < colStr.length; i++) {
+    col = col * 26 + (colStr.charCodeAt(i) - 64)
+  }
+  
+  return { row, col }
+}
+
+/**
+ * Set up CSV control event listeners
+ */
+function setupCSVControls() {
+  const csvDownloadBtn = document.getElementById('csv-download-btn')
+  const csvCopyBtn = document.getElementById('csv-copy-btn')
+  const csvUploadBtn = document.getElementById('csv-upload-btn')
+  const csvUploadInput = document.getElementById('csv-upload-input')
+  const csvPasteToggle = document.getElementById('csv-paste-toggle')
+  const csvPasteArea = document.getElementById('csv-paste-area')
+  const csvPasteInput = document.getElementById('csv-paste-input')
+  const csvImportBtn = document.getElementById('csv-import-btn')
+  const csvClearBtn = document.getElementById('csv-clear-btn')
+  
+  // Download CSV
+  csvDownloadBtn.addEventListener('click', downloadCSV)
+  
+  // Copy CSV to clipboard
+  csvCopyBtn.addEventListener('click', copyCSVToClipboard)
+  
+  // Upload CSV file
+  csvUploadBtn.addEventListener('click', () => {
+    csvUploadInput.click()
+  })
+  
+  csvUploadInput.addEventListener('change', (event) => {
+    const file = event.target.files[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        importFromCSV(e.target.result)
+      }
+      reader.readAsText(file)
+      // Reset input so same file can be selected again
+      event.target.value = ''
+    }
+  })
+  
+  // Toggle paste area
+  csvPasteToggle.addEventListener('click', () => {
+    const isHidden = csvPasteArea.style.display === 'none'
+    csvPasteArea.style.display = isHidden ? 'block' : 'none'
+    csvPasteToggle.textContent = isHidden ? '📋 Hide Paste' : '📋 Paste CSV'
+  })
+  
+  // Import from paste area
+  csvImportBtn.addEventListener('click', () => {
+    const content = csvPasteInput.value
+    if (content.trim()) {
+      importFromCSV(content)
+      csvPasteInput.value = ''
+      csvPasteArea.style.display = 'none'
+      csvPasteToggle.textContent = '📋 Paste CSV'
+    }
+  })
+  
+  // Clear paste area
+  csvClearBtn.addEventListener('click', () => {
+    csvPasteInput.value = ''
+  })
+}
+
+// Make setupCSVControls available globally for the spreadsheet UI
+window.setupCSVControls = setupCSVControls
 
 // Auto-connect on page load with WebRTC mode (default)
 // Small delay to allow topic to be set programmatically for tests

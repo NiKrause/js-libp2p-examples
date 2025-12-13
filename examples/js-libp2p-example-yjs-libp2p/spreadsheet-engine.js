@@ -620,6 +620,12 @@ export class SpreadsheetUI {
     if (this.elements.formulaInput) {
       this.elements.formulaInput.disabled = false
     }
+    // CSV controls are now in the toolbar and always visible
+    // Set up CSV controls if not already done
+    if (typeof window.setupCSVControls === 'function') {
+      window.setupCSVControls()
+      window.setupCSVControls = null // Prevent multiple setups
+    }
   }
 
   /**
