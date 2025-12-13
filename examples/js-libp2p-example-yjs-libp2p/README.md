@@ -83,10 +83,10 @@ npm start
 ## Usage
 
 1. Keep the default topic (`spreadsheet-1`) or enter a custom one
-2. Click "Connect WebRTC-Direct" or "Connect WebSocket"
+2. The application automatically connects via WebRTC-Direct on page load
 3. Wait for a WebRTC connection to establish with other peers
 4. Start editing cells in the spreadsheet
-5. Open another browser tab/window and connect with the same topic
+5. Open another browser tab/window with the same topic to collaborate
 6. Changes will sync automatically between all connected peers
 
 **Note:** The browser automatically connects to the relay server configured in `bootstrappers.js`. 

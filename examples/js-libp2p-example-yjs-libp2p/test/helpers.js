@@ -2,21 +2,17 @@
 
 /**
  * Helper to connect a page to the spreadsheet
+ * Note: Connection now happens automatically on page load
  *
  * @param {import('@playwright/test').Page} page - Playwright page instance
  * @param {string} [topic] - Topic name for the connection
- * @param {string} [mode] - Connection mode ('webrtc' or 'websocket')
+ * @param {string} [mode] - Connection mode ('webrtc' or 'websocket') - parameter kept for compatibility but not used
  */
 export async function connectToSpreadsheet (page, topic = 'test-topic', mode = 'webrtc') {
+  // Set topic before page load to ensure auto-connect uses the correct topic
   await page.fill('#topic', topic)
 
-  // Click the appropriate connect button based on mode
-  if (mode === 'websocket') {
-    await page.click('#connect-websocket')
-  } else {
-    await page.click('#connect-webrtc')
-  }
-
+  // Auto-connect is now triggered on page load, so we just wait for readiness
   // Wait for spreadsheet to appear and be ready
   await page.waitForFunction(
     () => document.getElementById('spreadsheet').style.display !== 'none' &&
