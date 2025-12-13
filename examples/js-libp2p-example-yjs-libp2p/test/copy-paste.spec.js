@@ -29,30 +29,18 @@ test.describe('Copy/Paste Feature', () => {
     await page.locator('#cell-A1').fill('100')
     await page.locator('#cell-A1').press('Enter')
 
-    // Click on A1 to select it (click() reliably triggers focus event)
+    // Click on A1 to select it
     await page.locator('#cell-A1').click()
-    await page.waitForTimeout(50) // Small wait for focus event to fire
     
-    // Ensure the input is actually focused before pressing Ctrl+C
-    await page.locator('#cell-A1').focus()
+    // Verify focus before copying - this ensures the element is actually focused
+    await expect(page.locator('#cell-A1')).toBeFocused()
+    
     await page.keyboard.press('ControlOrMeta+C')
-
-    // Wait for clipboard feedback element to appear and show feedback
-    // Accept either "Copied!" (success) or "Copied (internal only)" (fallback)
-    // TODO: Re-enable when clipboard feedback timing issues are resolved
-    // await page.waitForFunction(
-    //   () => {
-    //     const feedback = document.getElementById('clipboard-feedback')
-    //     if (!feedback) return false
-    //     const text = feedback.textContent
-    //     return text === 'Copied!' || text === 'Copied (internal only)'
-    //   },
-    //   { timeout: 5000 }
-    // )
 
     // Navigate to B1 and paste
     await page.locator('#cell-B1').click()
-    await page.locator('#cell-B1').focus()
+    await expect(page.locator('#cell-B1')).toBeFocused()
+    
     await page.keyboard.press('ControlOrMeta+V')
 
     // Wait for paste feedback
@@ -226,7 +214,7 @@ test.describe('Copy/Paste Feature', () => {
     await context.close()
   })
 
-  test.only('should immediately clear cell value when cutting', async ({ browser }) => {
+  test('should immediately clear cell value when cutting', async ({ browser }) => {
     const context = await browser.newContext()
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     const page = await context.newPage()
@@ -347,7 +335,7 @@ test.describe('Copy/Paste Feature', () => {
     await context2.close()
   })
 
-  test('should handle external clipboard data (TSV format)', async ({ browser, browserName }) => {
+  test.only('should handle external clipboard data (TSV format)', async ({ browser, browserName }) => {
     // Skip this test in WebKit due to clipboard API limitations
     test.skip(browserName === 'webkit', 'WebKit has limited clipboard API support')
 
@@ -433,7 +421,7 @@ test.describe('Copy/Paste Feature', () => {
   //
   //   // Enter value
   //   await page.locator('#cell-A1').click()
-  //   await page.locator('#cell-A1').fill('Test')
+  //   await page.locator('#cell-A1').fill('test(')
   //   await page.locator('#cell-A1').press('Enter')
   //
   //   // Copy

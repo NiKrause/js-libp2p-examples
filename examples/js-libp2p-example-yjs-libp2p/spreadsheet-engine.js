@@ -983,37 +983,39 @@ export class SpreadsheetUI {
 
     const isModifier = e.ctrlKey || e.metaKey
 
+    const key = e.key.toLowerCase()
+
     // Undo: Ctrl+Z or Cmd+Z (but not Shift+Z)
-    if (isModifier && e.key === 'z' && !e.shiftKey) {
+    if (isModifier && key === 'z' && !e.shiftKey) {
       e.preventDefault()
       this.handleUndo()
       return
     }
 
     // Redo: Ctrl+Y or Cmd+Y or Ctrl+Shift+Z or Cmd+Shift+Z
-    if ((isModifier && e.key === 'y') ||
-        (isModifier && e.shiftKey && e.key === 'z')) {
+    if ((isModifier && key === 'y') ||
+        (isModifier && e.shiftKey && key === 'z')) {
       e.preventDefault()
       this.handleRedo()
       return
     }
 
     // Copy: Ctrl+C or Cmd+C
-    if (isModifier && e.key === 'c') {
+    if (isModifier && key === 'c') {
       e.preventDefault()
       this.handleCopy()
       return
     }
 
     // Cut: Ctrl+X or Cmd+X
-    if (isModifier && e.key === 'x') {
+    if (isModifier && key === 'x') {
       e.preventDefault()
       this.handleCut()
       return
     }
 
     // Paste: Ctrl+V or Cmd+V
-    if (isModifier && e.key === 'v') {
+    if (isModifier && key === 'v') {
       e.preventDefault()
       this.handlePaste()
     }
@@ -1132,7 +1134,7 @@ export class SpreadsheetUI {
    *
    * @param {string} [externalData] - Optional external clipboard data
    */
-  handlePaste (externalData) {
+  async handlePaste (externalData) {
     if (!this.currentCell) { return }
 
     let dataToPaste
@@ -1144,8 +1146,18 @@ export class SpreadsheetUI {
       // Use internal copied data
       dataToPaste = this.copiedData.data
     } else {
-      // Nothing to paste
-      return
+      // No internal data - try reading from system clipboard
+      try {
+        const clipboardText = await navigator.clipboard.readText()
+        if (clipboardText) {
+          dataToPaste = this.parseTSVData(clipboardText)
+        } else {
+          return // Nothing to paste
+        }
+      } catch (e) {
+        // Clipboard read failed (permission denied or not supported)
+        return
+      }
     }
 
     // Get paste starting position
