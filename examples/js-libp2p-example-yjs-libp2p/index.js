@@ -26,6 +26,7 @@ import {
   SpreadsheetUI
 } from './spreadsheet-engine.js'
 import { Libp2pProvider } from './yjs-libp2p-provider.js'
+import { UCExtensionAdapter } from './uc-extension-adapter.js'
 
 // UI elements (network and logging related)
 const topicInput = document.getElementById('topic')
@@ -50,6 +51,7 @@ let yjsDoc
 let provider
 let spreadsheetEngine
 let spreadsheetUI
+let ucExtensionAdapter
 
 // Track peer connection transports to detect upgrades
 const peerTransports = new Map() // peerId -> Set of transport types
@@ -149,12 +151,19 @@ async function connectWithTransports (mode = 'webrtc') {
         throw new Error(`No ${mode} addresses available from relay`)
       }
 
-      log(`Found ${bootstrapAddresses.length} relay ${mode} address(es)`)
+      log(`Found ${bootstrapAddresses.length} relay ${mode} address(es) from local API:`)
+      bootstrapAddresses.forEach((addr, i) => {
+        log(`  [${i + 1}] ${addr}`)
+      })
     } catch (err) {
       log(`⚠️ Failed to fetch relay addresses: ${err.message}`, true)
-      // Fallback to hardcoded WebSocket addresses from bootstrappers.js
+      // Fallback to hardcoded addresses from bootstrappers.js
       bootstrapAddresses = (await import('./bootstrappers.js')).default
-      log(`Using ${bootstrapAddresses.length} fallback address(es)`)
+      const envMode = import.meta.env.DEV ? 'DEV' : 'PROD'
+      log(`Using ${envMode} fallback with ${bootstrapAddresses.length} address(es):`)
+      bootstrapAddresses.forEach((addr, i) => {
+        log(`  [${i + 1}] ${addr}`)
+      })
     }
 
     connectionModeEl.textContent = mode === 'webrtc'
@@ -260,10 +269,16 @@ async function connectWithTransports (mode = 'webrtc') {
     spreadsheetUI = new SpreadsheetUI(spreadsheetEngine)
     spreadsheetUI.initialize()
 
+    // Initialize UC Extension Adapter
+    ucExtensionAdapter = new UCExtensionAdapter(libp2pNode, spreadsheetEngine, topic)
+    await ucExtensionAdapter.start()
+
     // Expose for testing
     window.spreadsheetUI = spreadsheetUI
+    window.ucExtensionAdapter = ucExtensionAdapter
 
     log('Ready! Open this page in another tab to collaborate.')
+    log('UC Extension: Spreadsheet is now available as UC extension')
 
     // Expose sendMessage function to console
     // Publishes to UC chat topic with UC-compatible format (raw text only)
