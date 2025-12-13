@@ -137,6 +137,9 @@ export class UCExtensionAdapter {
 
     try {
       switch (command) {
+        case 'help':
+          response = await this.handleHelp(args, requestId)
+          break
         case 'show':
           response = await this.handleShow(args, requestId)
           break
@@ -147,11 +150,17 @@ export class UCExtensionAdapter {
           response = await this.handleList(args, requestId)
           break
         default:
-          response.error = `Unknown command: ${command}`
+          response.error = `Unknown command: ${command}. Type /sheet-help for available commands.`
       }
     } catch (error) {
       response.error = error.message
       console.error(`UC Extension: Command error:`, error)
+    }
+
+    // If response is null, silently ignore (another peer handles this topic)
+    if (response === null) {
+      console.log(`⏭️  UC Extension: Ignoring command (topic mismatch)`)
+      return
     }
 
     // Send response
@@ -180,15 +189,10 @@ export class UCExtensionAdapter {
 
     const [requestedTopic, cellRef] = args
 
-    // Check if we're on the requested topic
+    // Silently ignore if we're not on the requested topic
+    // Another peer handling that topic will respond
     if (requestedTopic !== this.topic) {
-      return {
-        type: 'response',
-        requestId,
-        success: false,
-        error: `Not connected to topic '${requestedTopic}'. Currently on '${this.topic}'`,
-        timestamp: Date.now()
-      }
+      return null
     }
 
     // Get cell value
@@ -225,15 +229,10 @@ export class UCExtensionAdapter {
 
     const [requestedTopic, assignment] = args
 
-    // Check if we're on the requested topic
+    // Silently ignore if we're not on the requested topic
+    // Another peer handling that topic will respond
     if (requestedTopic !== this.topic) {
-      return {
-        type: 'response',
-        requestId,
-        success: false,
-        error: `Not connected to topic '${requestedTopic}'. Currently on '${this.topic}'`,
-        timestamp: Date.now()
-      }
+      return null
     }
 
     // Parse assignment (e.g., "A1=25" or "B2=hello")
@@ -290,6 +289,55 @@ export class UCExtensionAdapter {
       data: {
         topics: Array.from(this.topics),
         currentTopic: this.topic
+      },
+      timestamp: Date.now()
+    }
+  }
+
+  /**
+   * Handle help command: /sheet-help
+   */
+  async handleHelp (args, requestId) {
+    const helpText = `
+📊 ${manifest.name} v${manifest.version}
+${manifest.description}
+
+🌐 Open Spreadsheet UI: ${manifest.publicUrl}
+
+Available Commands:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+/sheet-help
+  Show this help message
+
+/sheet-list
+  List all active spreadsheet topics
+
+/sheet-show <topic> <cell>
+  Show the value of a cell
+  Example: /sheet-show hackathon A1
+
+/sheet-write <topic> <cell>=<value>
+  Write a value to a cell
+  Example: /sheet-write hackathon A1=100
+
+/sheet-write <topic> <cell>=<formula>
+  Write a formula to a cell (start with =)
+  Example: /sheet-write hackathon B1==A1*2
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📍 Current topic: ${this.topic}
+👤 Author: ${manifest.author}
+`.trim()
+
+    return {
+      type: 'response',
+      requestId,
+      success: true,
+      data: {
+        help: helpText,
+        publicUrl: manifest.publicUrl,
+        commands: manifest.commands
       },
       timestamp: Date.now()
     }

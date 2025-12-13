@@ -8,6 +8,11 @@
   "author": "libp2p community",
   "commands": [
     {
+      "name": "help",
+      "syntax": "/sheet-help",
+      "description": "Show all available commands and their usage"
+    },
+    {
       "name": "show",
       "syntax": "/sheet-show <topic> <cell>",
       "description": "Show the value of a cell in a spreadsheet topic"
@@ -15,7 +20,7 @@
     {
       "name": "write",
       "syntax": "/sheet-write <topic> <cell>=<value>",
-      "description": "Write a value to a cell in a spreadsheet topic"
+      "description": "Write a value or formula to a cell in a spreadsheet topic"
     },
     {
       "name": "list",
