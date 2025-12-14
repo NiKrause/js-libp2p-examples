@@ -5,11 +5,16 @@
 [![codecov](https://img.shields.io/codecov/c/github/libp2p/js-libp2p-examples.svg?style=flat-square)](https://codecov.io/gh/libp2p/js-libp2p-examples)
 [![CI](https://img.shields.io/github/actions/workflow/status/libp2p/js-libp2p-examples/ci.yml?branch=main\&style=flat-square)](https://github.com/libp2p/js-libp2p-examples/actions/workflows/ci.yml?query=branch%3Amain)
 
-> A collaborative spreadsheet built with Yjs and libp2p, demonstrating real-time peer-to-peer document synchronization
+> A collaborative spreadsheet built with Yjs and libp2p, demonstrating real-time peer-to-peer document synchronization and Universal Connectivity Extension Protocol (UCEP)
+
+## 🌐 Live Demo
+
+**Try it now:** https://dweb.link/ipfs/bafybeibcs47xrlvt53lcq5eop2jjgxarumnm3ueyes6qydlecudvtwsm4m
 
 ## Table of Contents <!-- omit in toc -->
 
 - [Overview](#overview)
+- [UC Extension Protocol (UCEP)](#uc-extension-protocol-ucep)
 - [Architecture](#architecture)
 - [Setup](#setup)
 - [Usage](#usage)
@@ -37,6 +42,37 @@ Key features:
 - **AutoNAT**: Automatic NAT detection
 - **PubSub**: GossipSub for document synchronization
 - **Peer Discovery**: Automatic connection to discovered peers via pubsub peer discovery
+
+## UC Extension Protocol (UCEP)
+
+This example implements the **Universal Connectivity Extension Protocol** - a decentralized plugin system for libp2p applications. The spreadsheet is discoverable and controllable as an extension by other UC-compatible apps like the [Universal Connectivity chat](https://github.com/NiKrause/universal-connectivity).
+
+### How It Works
+
+1. **Discovery**: Extensions are discovered via libp2p's identify protocol (`/uc/extension/sheet/1.0.0`)
+2. **Manifest Fetching**: Peers fetch extension metadata (name, commands, description)
+3. **Command Execution**: Remote peers can execute commands via direct libp2p streams:
+   - `/sheet-help` - Show available commands
+   - `/sheet-show <topic> <cell>` - Read cell values
+   - `/sheet-write <topic> <cell>=<value>` - Write to cells
+   - `/sheet-list` - List active spreadsheet topics
+
+### Testing Extensions
+
+Open the browser console and try:
+```javascript
+// List discovered extensions
+window.listExtensions()
+
+// Test extension commands
+window.testExtension('sheet', 'help')
+window.testExtension('sheet', 'show', ['spreadsheet-1', 'A1'])
+window.testExtension('sheet', 'write', ['spreadsheet-1', 'B1=42'])
+```
+
+Or connect from the [Universal Connectivity chat app](https://universal-connectivity.fly.dev/) to control the spreadsheet via chat commands!
+
+**Learn more:** See [UC-EXTENSION-PROTOCOL.md](./UC-EXTENSION-PROTOCOL.md) for complete protocol documentation.
 
 ## Architecture
 
