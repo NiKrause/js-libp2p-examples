@@ -29,7 +29,7 @@ import {
   SpreadsheetUI
 } from './spreadsheet-engine.js'
 import { Libp2pProvider } from './yjs-libp2p-provider.js'
-import { UCExtensionAdapter } from './uc-extension-adapter.js'
+import { UCExtensionService } from './uc-extension-service.js'
 import { DirectMessage } from './direct-message.js'
 
 // UI elements (network and logging related)
@@ -53,7 +53,7 @@ let yjsDoc
 let provider
 let spreadsheetEngine
 let spreadsheetUI
-let ucExtensionAdapter
+let ucExtensionService
 let directMessageService
 
 // Track peer connection transports to detect upgrades
@@ -380,9 +380,15 @@ async function connectWithTransports (mode = 'webrtc') {
     spreadsheetUI = new SpreadsheetUI(spreadsheetEngine)
     spreadsheetUI.initialize()
 
-    // Initialize UC Extension Adapter
-    ucExtensionAdapter = new UCExtensionAdapter(libp2pNode, spreadsheetEngine, topic)
-    await ucExtensionAdapter.start()
+    // Initialize UC Extension Service
+    ucExtensionService = new UCExtensionService({
+      libp2p: libp2pNode,
+      spreadsheetEngine,
+      topic
+    })
+    await ucExtensionService.start()
+    await ucExtensionService.afterStart()
+    log('📦 UC Extension: Service initialized')
 
     // Initialize Direct Message Service
     directMessageService = new DirectMessage({ libp2p: libp2pNode })
@@ -392,7 +398,7 @@ async function connectWithTransports (mode = 'webrtc') {
 
     // Expose for testing
     window.spreadsheetUI = spreadsheetUI
-    window.ucExtensionAdapter = ucExtensionAdapter
+    window.ucExtensionService = ucExtensionService
     window.directMessageService = directMessageService
 
     log('Ready! Open this page in another tab to collaborate.')
