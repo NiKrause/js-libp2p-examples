@@ -22,7 +22,6 @@
 - [Setup](#setup)
 - [Usage](#usage)
   - [Debug Mode](#debug-mode)
-- [Browser Compatibility](#browser-compatibility)
 - [How It Works](#how-it-works-1)
   - [Libp2p Configuration](#libp2p-configuration)
   - [Yjs Integration](#yjs-integration)
@@ -140,21 +139,11 @@ Add `?debug=true` to the URL:
 http://localhost:5173/?debug=true
 ```
 
-## Browser Compatibility
-
-This example has been tested with the following browsers:
-
-- ✅ **Chrome/Chromium**: Fully supported and tested
-- ✅ **Firefox**: Fully supported and tested
-- ⚠️ **Safari/WebKit**: Partial support - WebRTC-Direct connections work, but WebSocket connections to relay do not establish webrtc connection between browsers
-
-**Recommendation:** Use Chrome or Chromium-based or Firefox browsers for the best experience. Safari/WebKit users should use WebRTC-Direct bootstrap connections.
-
 ## How It Works
 
 ### Libp2p Configuration
 
-The browser clients are configured with:
+The browser nodes are configured with:
 
 - **Transports**: WebSockets (for relay), WebRTC (for direct P2P), Circuit Relay
 - **Security**: Noise protocol for encryption
@@ -194,6 +183,7 @@ The provider uses three message types:
 ## Key Features
 
 ### Networking
+
 - **WebRTC Direct**: Faster peer-to-peer connections with automatic NAT traversal via DCUTR
 - **WebSocket**: Reliable relay-based connections when direct connections aren't possible
 - **Direct Peer-to-Peer**: Real-time document sync directly between browsers via WebRTC
@@ -211,6 +201,7 @@ The provider uses three message types:
 - **Real-time Collaboration**: All changes sync instantly across all connected peers
 
 ### Keyboard Shortcuts
+
 - `Ctrl+C` / `Cmd+C` - Copy cell
 - `Ctrl+X` / `Cmd+X` - Cut cell
 - `Ctrl+V` / `Cmd+V` - Paste cell
