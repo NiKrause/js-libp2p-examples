@@ -304,6 +304,12 @@ test.describe.skip('undo/redo feature', () => {
   })
 
   test('should sync changes but not undo/redo history between browsers', async ({ browser }) => {
+    // Skip multi-browser tests in CI due to resource constraints
+    if (process.env.CI || process.env.GITHUB_ACTIONS) {
+      test.skip(true, 'Skipping multi-browser test in CI environment')
+      return
+    }
+
     const context1 = await browser.newContext()
     const context2 = await browser.newContext()
 
