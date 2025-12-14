@@ -522,30 +522,31 @@ async function connectWithTransports (mode = 'webrtc') {
 
 /**
  * Convert spreadsheet data to CSV format
+ *
  * @returns {string} CSV formatted string
  */
-function exportToCSV() {
+function exportToCSV () {
   if (!spreadsheetEngine) {
     console.warn('Spreadsheet engine not available')
     return ''
   }
 
   const allCells = spreadsheetEngine.getAllCells()
-  
+
   // Find the bounds of the data
   let maxRow = 0
   let maxCol = 0
-  
+
   for (const coord of allCells.keys()) {
     const { row, col } = parseCoordinate(coord)
     maxRow = Math.max(maxRow, row)
     maxCol = Math.max(maxCol, col)
   }
-  
+
   if (maxRow === 0 && maxCol === 0) {
     return '' // Empty spreadsheet
   }
-  
+
   // Build CSV rows
   const rows = []
   for (let row = 1; row <= maxRow; row++) {
@@ -554,53 +555,54 @@ function exportToCSV() {
       const coord = columnNumberToLetter(col) + row
       const cell = allCells.get(coord)
       let value = ''
-      
+
       if (cell) {
         // Use display value (calculated result) instead of raw formula
         value = cell.value !== undefined ? String(cell.value) : ''
       }
-      
+
       // Escape CSV values that contain commas, quotes, or newlines
       if (value.includes(',') || value.includes('"') || value.includes('\n')) {
         value = '"' + value.replace(/"/g, '""') + '"'
       }
-      
+
       rowData.push(value)
     }
     rows.push(rowData.join(','))
   }
-  
+
   return rows.join('\n')
 }
 
 /**
  * Parse CSV content and import it to the spreadsheet
+ *
  * @param {string} csvContent - CSV formatted string
  */
-function importFromCSV(csvContent) {
+function importFromCSV (csvContent) {
   if (!spreadsheetEngine) {
     console.warn('Spreadsheet engine not available')
     return
   }
-  
+
   if (!csvContent.trim()) {
     return
   }
-  
+
   // Simple CSV parser (handles quoted fields with commas)
   const rows = []
   const lines = csvContent.split('\n')
-  
+
   for (const line of lines) {
-    if (!line.trim()) continue
-    
+    if (!line.trim()) { continue }
+
     const row = []
     let current = ''
     let inQuotes = false
-    
+
     for (let i = 0; i < line.length; i++) {
       const char = line[i]
-      
+
       if (char === '"' && !inQuotes) {
         inQuotes = true
       } else if (char === '"' && inQuotes) {
@@ -621,7 +623,7 @@ function importFromCSV(csvContent) {
     row.push(current) // Add final cell
     rows.push(row)
   }
-  
+
   // Import the data
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     const rowData = rows[rowIndex]
@@ -633,24 +635,24 @@ function importFromCSV(csvContent) {
       }
     }
   }
-  
+
   log(`Imported ${rows.length} rows from CSV`)
 }
 
 /**
  * Copy CSV to clipboard
  */
-async function copyCSVToClipboard() {
+async function copyCSVToClipboard () {
   const csvContent = exportToCSV()
   if (!csvContent) {
-    alert('No data to copy')
+    log('No data to copy')
     return
   }
-  
+
   try {
     await navigator.clipboard.writeText(csvContent)
     log('CSV data copied to clipboard')
-    
+
     // Visual feedback
     const copyBtn = document.getElementById('csv-copy-btn')
     if (copyBtn) {
@@ -662,23 +664,23 @@ async function copyCSVToClipboard() {
     }
   } catch (err) {
     console.error('Failed to copy to clipboard:', err)
-    alert('Failed to copy to clipboard. Try selecting and copying manually.')
+    log('Failed to copy to clipboard. Try selecting and copying manually.')
   }
 }
 
 /**
  * Download CSV file
  */
-function downloadCSV() {
+function downloadCSV () {
   const csvContent = exportToCSV()
   if (!csvContent) {
-    alert('No data to export')
+    log('No data to export')
     return
   }
-  
+
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
   const link = document.createElement('a')
-  
+
   if (link.download !== undefined) {
     const url = URL.createObjectURL(blob)
     link.setAttribute('href', url)
@@ -693,8 +695,10 @@ function downloadCSV() {
 
 /**
  * Utility function to convert column number to letter (1 -> A, 2 -> B, etc.)
+ *
+ * @param num
  */
-function columnNumberToLetter(num) {
+function columnNumberToLetter (num) {
   let result = ''
   while (num > 0) {
     num--
@@ -706,26 +710,28 @@ function columnNumberToLetter(num) {
 
 /**
  * Parse coordinate like "A1" to {row: 1, col: 1}
+ *
+ * @param coord
  */
-function parseCoordinate(coord) {
+function parseCoordinate (coord) {
   const match = coord.match(/^([A-Z]+)(\d+)$/)
-  if (!match) return { row: 0, col: 0 }
-  
+  if (!match) { return { row: 0, col: 0 } }
+
   const colStr = match[1]
   const row = parseInt(match[2])
-  
+
   let col = 0
   for (let i = 0; i < colStr.length; i++) {
     col = col * 26 + (colStr.charCodeAt(i) - 64)
   }
-  
+
   return { row, col }
 }
 
 /**
  * Set up CSV control event listeners
  */
-function setupCSVControls() {
+function setupCSVControls () {
   const csvDownloadBtn = document.getElementById('csv-download-btn')
   const csvCopyBtn = document.getElementById('csv-copy-btn')
   const csvUploadBtn = document.getElementById('csv-upload-btn')
@@ -735,18 +741,18 @@ function setupCSVControls() {
   const csvPasteInput = document.getElementById('csv-paste-input')
   const csvImportBtn = document.getElementById('csv-import-btn')
   const csvClearBtn = document.getElementById('csv-clear-btn')
-  
+
   // Download CSV
   csvDownloadBtn.addEventListener('click', downloadCSV)
-  
+
   // Copy CSV to clipboard
   csvCopyBtn.addEventListener('click', copyCSVToClipboard)
-  
+
   // Upload CSV file
   csvUploadBtn.addEventListener('click', () => {
     csvUploadInput.click()
   })
-  
+
   csvUploadInput.addEventListener('change', (event) => {
     const file = event.target.files[0]
     if (file) {
@@ -759,14 +765,14 @@ function setupCSVControls() {
       event.target.value = ''
     }
   })
-  
+
   // Toggle paste area
   csvPasteToggle.addEventListener('click', () => {
     const isHidden = csvPasteArea.style.display === 'none'
     csvPasteArea.style.display = isHidden ? 'block' : 'none'
     csvPasteToggle.textContent = isHidden ? '📋 Hide Paste' : '📋 Paste CSV'
   })
-  
+
   // Import from paste area
   csvImportBtn.addEventListener('click', () => {
     const content = csvPasteInput.value
@@ -777,7 +783,7 @@ function setupCSVControls() {
       csvPasteToggle.textContent = '📋 Paste CSV'
     }
   })
-  
+
   // Clear paste area
   csvClearBtn.addEventListener('click', () => {
     csvPasteInput.value = ''

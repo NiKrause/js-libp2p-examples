@@ -19,11 +19,11 @@ export async function connectToSpreadsheet (page, topic = 'test-topic', mode = '
       const spreadsheet = document.getElementById('spreadsheet')
       const formulaInput = document.getElementById('formula-input')
       const mainContent = document.querySelector('.main-content')
-      
+
       // Check if main content is visible and spreadsheet exists with formula input enabled
-      return mainContent && 
-             spreadsheet && 
-             formulaInput && 
+      return mainContent &&
+             spreadsheet &&
+             formulaInput &&
              !formulaInput.disabled &&
              mainContent.style.display !== 'none'
     },
@@ -44,7 +44,7 @@ export async function expandTechnicalDetails (page) {
       const headerText = panel.querySelector('.panel-header')?.textContent
       if (headerText && headerText.includes('Peer-To-Peer Details')) {
         const button = panel.querySelector('.panel-header')
-        if (button) button.click()
+        if (button) { button.click() }
         break
       }
     }
@@ -60,7 +60,7 @@ export async function expandTechnicalDetails (page) {
 export async function waitForReady (page, timeout = 15000) {
   // Expand technical details to access log
   await expandTechnicalDetails(page)
-  
+
   // Wait for Ready! message in logs
   await page.waitForFunction(
     () => document.getElementById('log')?.value?.includes('Ready!'),
@@ -142,7 +142,6 @@ export async function waitForWebRTCConnection (page, timeout = 60000) {
     const pageConnected = await page.evaluate(() => {
       return document.readyState === 'complete' && document.body
     }).catch(() => false)
-    
     if (!pageConnected) {
       throw new Error('Page is no longer accessible')
     }
@@ -150,14 +149,13 @@ export async function waitForWebRTCConnection (page, timeout = 60000) {
     // Then wait for WebRTC transport badge to appear (direct or over relay)
     // Use a shorter timeout with retries to avoid hanging
     const webrtcTimeout = Math.min(timeout, 30000) // Max 30 seconds for WebRTC upgrade
-    
     try {
       await page.waitForFunction(
         () => {
           try {
             const webrtcBadge = document.querySelector('.transport.webrtc')
             const relayWebrtcBadge = document.querySelector('.transport.relay-webrtc')
-            console.log('Checking for WebRTC badges - direct:', !!webrtcBadge, 'relay+webrtc:', !!relayWebrtcBadge)
+            console.log('Checking for WebRTC badges - direct:', Boolean(webrtcBadge), 'relay+webrtc:', Boolean(relayWebrtcBadge))
             return webrtcBadge !== null || relayWebrtcBadge !== null
           } catch (e) {
             console.error('Error checking WebRTC badges:', e)
@@ -173,10 +171,9 @@ export async function waitForWebRTCConnection (page, timeout = 60000) {
         const peerCount = document.querySelector('#peer-count')?.textContent
         return parseInt(peerCount) >= 2
       }).catch(() => false)
-      
+
       if (fallbackCheck) {
         console.warn('WebRTC upgrade failed, but peer connection is stable. Continuing test...')
-        return
       } else {
         throw new Error(`WebRTC connection failed after ${webrtcTimeout}ms: ${webrtcError.message}`)
       }
