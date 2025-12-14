@@ -33,6 +33,11 @@ test.afterEach(async ({ browser }) => {
 test.describe('Copy/Paste Feature', () => {
   test.setTimeout(120000)
 
+  // Skip ALL clipboard tests on WebKit - it doesn't support clipboard permissions
+  test.beforeEach(({ browserName }) => {
+    test.skip(browserName === 'webkit', 'WebKit does not support clipboard permissions')
+  })
+
   test('should copy and paste a single cell value', async ({ browser, browserName }) => {
     const context = await browser.newContext()
 

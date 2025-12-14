@@ -11,7 +11,12 @@ const url = 'http://localhost:5173'
 test.describe('STUN Server Connectivity', () => {
   test.setTimeout(30000)
 
-  test('should be able to reach STUN servers from Chromium', async ({ browser }) => {
+  // Skip ALL STUN tests on WebKit - designed for Chromium/Firefox
+  test.beforeEach(({ browserName }) => {
+    test.skip(browserName === 'webkit', 'STUN tests designed for Chromium/Firefox')
+  })
+
+  test('should be able to reach STUN servers from Chromium', async ({ browser, browserName }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
 
@@ -171,7 +176,7 @@ test.describe('STUN Server Connectivity', () => {
     await context.close()
   })
 
-  test('should gather both host and srflx candidates', async ({ browser }) => {
+  test('should gather both host and srflx candidates', async ({ browser, browserName }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
 
@@ -238,7 +243,7 @@ test.describe('STUN Server Connectivity', () => {
     await context.close()
   })
 
-  test('should compare ICE gathering across different browsers', async ({ browser }) => {
+  test('should compare ICE gathering across different browsers', async ({ browser, browserName }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
 

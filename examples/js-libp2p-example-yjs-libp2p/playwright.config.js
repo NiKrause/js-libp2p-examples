@@ -78,8 +78,9 @@ export default defineConfig({
     {
       name: 'webkit',
       use: {
-        ...devices['Desktop Safari'],
-        permissions: ['clipboard-read', 'clipboard-write']
+        ...devices['Desktop Safari']
+        // Note: WebKit doesn't support Playwright's permissions API for clipboard
+        // Clipboard tests will be skipped on WebKit
       }
     }
   ],
