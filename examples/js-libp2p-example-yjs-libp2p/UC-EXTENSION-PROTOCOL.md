@@ -36,7 +36,7 @@ Examples:
 
 ## Architecture
 
-### Extension Provider (Server Side)
+### Extension Provider
 
 The peer that provides an extension:
 
@@ -70,7 +70,7 @@ class UCExtensionService {
 }
 ```
 
-### Extension Client (Discovery Side)
+### Extension Consumer (Discovery & consumption side)
 
 The peer that uses extensions:
 

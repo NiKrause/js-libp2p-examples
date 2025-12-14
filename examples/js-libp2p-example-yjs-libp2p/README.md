@@ -13,19 +13,25 @@
 
 ## Table of Contents <!-- omit in toc -->
 
+- [🌐 Live Demo](#-live-demo)
 - [Overview](#overview)
 - [UC Extension Protocol (UCEP)](#uc-extension-protocol-ucep)
+  - [How It Works](#how-it-works)
+  - [Testing Extensions](#testing-extensions)
 - [Architecture](#architecture)
 - [Setup](#setup)
 - [Usage](#usage)
   - [Debug Mode](#debug-mode)
 - [Browser Compatibility](#browser-compatibility)
-- [How It Works](#how-it-works)
+- [How It Works](#how-it-works-1)
   - [Libp2p Configuration](#libp2p-configuration)
   - [Yjs Integration](#yjs-integration)
   - [Message Types](#message-types)
   - [Peer Discovery Flow](#peer-discovery-flow)
 - [Key Features](#key-features)
+  - [Networking](#networking)
+  - [Spreadsheet Features](#spreadsheet-features)
+  - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [Need help?](#need-help)
 - [License](#license)
 - [Contribution](#contribution)
@@ -37,6 +43,7 @@ This example demonstrates how to create a [Yjs connection provider](https://docs
 Key features:
 
 - **Custom Yjs Provider**: A libp2p-based connection provider for Yjs (`yjs-libp2p-provider.js`)
+- **Universal Connectivity Chat Protocol**: Integrated chat protocol based on the universal connectivity chat with privat chats
 - **WebRTC Support**: Direct peer-to-peer connections using WebRTC
 - **Circuit Relay**: NAT traversal via relay servers
 - **AutoNAT**: Automatic NAT detection
