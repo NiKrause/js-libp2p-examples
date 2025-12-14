@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package ext;
+
+// Extension protocol messages for Universal Connectivity
+// Used for extension discovery and command execution via direct streams
+
+message ExtensionManifest {
+  string id = 1;
+  string name = 2;
+  string version = 3;
+  string description = 4;
+  string author = 5;
+  string publicUrl = 6;
+  repeated ExtensionCommand commands = 7;
+  string icon = 8;
+}
+
+message ExtensionCommand {
+  string name = 1;
+  string syntax = 2;
+  string description = 3;
+}
+
+// Request wrapper - exactly one field will be set
+message Request {
+  oneof payload {
+    ManifestRequest manifest = 1;
+    CommandRequest command = 2;
+  }
+}
+
+// Response wrapper - exactly one field will be set  
+message Response {
+  oneof payload {
+    ManifestResponse manifest = 1;
+    CommandResponse command = 2;
+  }
+}
+
+message ManifestRequest {
+  int64 timestamp = 1;
+}
+
+message ManifestResponse {
+  ExtensionManifest manifest = 1;
+  int64 timestamp = 2;
+}
+
+message CommandRequest {
+  string requestId = 1;
+  string extensionId = 2;
+  string command = 3;
+  repeated string args = 4;
+  int64 timestamp = 5;
+}
+
+message CommandResponse {
+  string requestId = 1;
+  bool success = 2;
+  optional string data = 3;       // JSON-encoded data
+  optional string error = 4;
+  int64 timestamp = 5;
+}

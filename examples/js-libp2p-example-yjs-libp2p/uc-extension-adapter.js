@@ -1,10 +1,8 @@
 /* eslint-disable no-console */
 
-import { pipe } from 'it-pipe'
-import * as lp from 'it-length-prefixed'
-import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string'
-import { toString as uint8ArrayToString } from 'uint8arrays/to-string'
 import manifest from './extension-manifest.json'
+import { pbStream } from 'it-protobuf-stream'
+import { ext } from './protobuf/extension.js'
 
 /**
  * UC Extension Adapter for Spreadsheet
@@ -41,7 +39,12 @@ export class UCExtensionAdapter {
     try {
       // Register the extension protocol handler
       // This makes the extension discoverable via libp2p identify
-      await this.libp2p.handle(EXTENSION_PROTOCOL, this.handleProtocol.bind(this))
+      // Note: Different libp2p versions pass stream differently
+      // This version passes the stream directly as first parameter
+      await this.libp2p.handle(EXTENSION_PROTOCOL, async (stream) => {
+        console.log('🔗 UC Extension: Handler called, stream:', !!stream)
+        await this.handleProtocol(stream)
+      })
       console.log(`✅ UC Extension: Registered protocol ${EXTENSION_PROTOCOL}`)
       console.log(`📦 Extension "${manifest.name}" is now discoverable via identify`)
       console.log(`📍 Current spreadsheet topic: ${this.topic}`)
@@ -65,61 +68,121 @@ export class UCExtensionAdapter {
 
   /**
    * Handle incoming protocol stream
+   * Uses pbStream exactly like UC's direct-message.ts
+   * Note: This libp2p version passes stream directly, not wrapped in object
    */
-  async handleProtocol ({ stream, connection }) {
-    const remotePeer = connection.remotePeer.toString()
-    console.log(`🔗 UC Extension: Stream from ${remotePeer.slice(-8)}`)
+  async handleProtocol (stream) {
+    if (!stream) {
+      console.error('🔗 UC Extension: No stream in handler')
+      return
+    }
+    
+    console.log(`🔗 UC Extension: Stream received (protocol: ${stream.protocol || 'unknown'})`)
+    const datastream = pbStream(stream)
+    
+    // Critical diagnostic: Check if ext and codecs exist BEFORE try block
+    console.error('🚨 UC Extension: AFTER pbStream - checking ext:', typeof ext, ext)
+    console.error('🚨 UC Extension: ext.Request exists?', typeof ext?.Request)
+    console.error('🚨 UC Extension: ext.Request.codec exists?', typeof ext?.Request?.codec)
+    console.error('🚨 UC Extension: ext.Response exists?', typeof ext?.Response)
+    console.error('🚨 UC Extension: ext.Response.codec exists?', typeof ext?.Response?.codec)
 
     try {
-      await pipe(
-        stream.source,
-        (source) => lp.decode(source),
-        async function * (source) {
-          for await (const data of source) {
-            const request = JSON.parse(uint8ArrayToString(data.subarray()))
-            console.log(`📨 UC Extension: Received ${request.type} from ${remotePeer.slice(-8)}`)
-
-            let response
-            switch (request.type) {
-              case 'manifest-request':
-                response = this.handleManifestRequest(request)
-                break
-              case 'command':
-                response = await this.handleCommand(request)
-                break
-              default:
-                response = {
-                  type: 'response',
-                  requestId: request.requestId,
-                  success: false,
-                  error: `Unknown request type: ${request.type}`,
-                  timestamp: Date.now()
-                }
-            }
-
-            // Only send response if not null (null means silently ignore)
-            if (response !== null) {
-              yield uint8ArrayFromString(JSON.stringify(response))
+      const signal = AbortSignal.timeout(5000)
+      
+      // Diagnostic tests: Check if protobuf codec exists
+      console.log('🔍 UC Extension: Checking ext.Request:', typeof ext.Request, ext.Request)
+      console.log('🔍 UC Extension: Checking ext.Request.codec:', typeof ext.Request?.codec)
+      if (ext.Request?.codec) {
+        console.log('🔍 UC Extension: ext.Request.codec exists:', typeof ext.Request.codec())
+      } else {
+        console.error('❌ UC Extension: ext.Request.codec is UNDEFINED! Protobuf not generated correctly!')
+        throw new Error('ext.Request.codec is undefined - protobuf files need to be regenerated')
+      }
+      
+      console.log('📥 UC Extension: Waiting for request...')
+      
+      // Read the Request wrapper message
+      const request = await datastream.read(ext.Request, { signal })
+      
+      // Check which type of request it is using the oneof field
+      if (request.payload === 'manifest') {
+        console.log(`📨 UC Extension: Received manifest request`)
+        
+        // Create Response wrapper with manifest response
+        const response = {
+          payload: 'manifest',
+          manifest: {
+            manifest: {
+              id: manifest.id,
+              name: manifest.name,
+              version: manifest.version,
+              description: manifest.description,
+              author: manifest.author,
+              publicUrl: manifest.publicUrl,
+              icon: manifest.icon,
+              commands: manifest.commands.map(cmd => ({
+                name: cmd.name,
+                syntax: cmd.syntax,
+                description: cmd.description,
+              })),
+            },
+            timestamp: BigInt(Date.now()),
+          }
+        }
+        
+        // Check Response codec before writing
+        console.log('🔍 UC Extension: Checking ext.Response.codec:', typeof ext.Response?.codec)
+        if (!ext.Response?.codec) {
+          throw new Error('ext.Response.codec is undefined - protobuf files need to be regenerated')
+        }
+        
+        console.log(`📤 UC Extension: Sending manifest response`)
+        await datastream.write(response, ext.Response, { signal })
+        console.log(`📤 UC Extension: Manifest sent!`)
+      } else if (request.payload === 'command') {
+        console.log(`📨 UC Extension: Received command: ${request.command.command}`)
+        
+        const commandResponse = await this.handleCommand(request.command)
+        
+        if (commandResponse !== null) {
+          // Create Response wrapper with command response
+          const response = {
+            payload: 'command',
+            command: {
+              requestId: request.command.requestId,
+              success: commandResponse.success,
+              data: commandResponse.data ? JSON.stringify(commandResponse.data) : undefined,
+              error: commandResponse.error,
+              timestamp: BigInt(Date.now()),
             }
           }
-        }.bind(this),
-        (source) => lp.encode(source),
-        stream.sink
-      )
-    } catch (error) {
-      console.error('UC Extension: Protocol handler error:', error)
-    }
-  }
-
-  /**
-   * Handle manifest request
-   */
-  handleManifestRequest (request) {
-    console.log('📋 UC Extension: Sending manifest')
-    return {
-      type: 'manifest-response',
-      manifest: manifest,
-      timestamp: Date.now()
+          
+          console.log(`📤 UC Extension: Sending command response`)
+          await datastream.write(response, ext.Response, { signal })
+          console.log(`📤 UC Extension: Command response sent!`)
+        }
+      } else {
+        throw new Error('Unknown request type')
+      }
+    } catch (e) {
+      console.error('❌ UC Extension: Protocol handler error:', e?.message || e)
+      console.error('❌ UC Extension: Error stack:', e?.stack)
+      console.error('❌ UC Extension: Full error object:', e)
+      stream?.abort(e)
+      throw e
+    } finally {
+      // Proper stream cleanup - exactly like direct-message.ts
+      try {
+        await stream?.close({
+          signal: AbortSignal.timeout(5000)
+        })
+        console.log('🔗 UC Extension: Stream closed successfully')
+      } catch (err) {
+        console.error('UC Extension: Error closing stream:', err?.message)
+        stream?.abort(err)
+        throw err
+      }
     }
   }
 
@@ -132,8 +195,6 @@ export class UCExtensionAdapter {
     console.log(`🎯 UC Extension: Command: ${command} ${args.join(' ')}`)
 
     let response = {
-      type: 'response',
-      requestId,
       success: false,
       data: null,
       error: null,
@@ -143,16 +204,16 @@ export class UCExtensionAdapter {
     try {
       switch (command) {
         case 'help':
-          response = await this.handleHelp(args, requestId)
+          response = await this.handleHelp(args)
           break
         case 'show':
-          response = await this.handleShow(args, requestId)
+          response = await this.handleShow(args)
           break
         case 'write':
-          response = await this.handleWrite(args, requestId)
+          response = await this.handleWrite(args)
           break
         case 'list':
-          response = await this.handleList(args, requestId)
+          response = await this.handleList(args)
           break
         default:
           response.error = `Unknown command: ${command}. Type /sheet-help for available commands.`
@@ -168,7 +229,7 @@ export class UCExtensionAdapter {
   /**
    * Handle help command: /sheet-help
    */
-  async handleHelp (args, requestId) {
+  async handleHelp (args) {
     const helpText = `
 📊 ${manifest.name} v${manifest.version}
 ${manifest.description}
@@ -203,29 +264,23 @@ Available Commands:
 `.trim()
 
     return {
-      type: 'response',
-      requestId,
       success: true,
       data: {
         help: helpText,
         publicUrl: manifest.publicUrl,
         commands: manifest.commands
-      },
-      timestamp: Date.now()
+      }
     }
   }
 
   /**
    * Handle show command: /sheet-show <topic> <cell>
    */
-  async handleShow (args, requestId) {
+  async handleShow (args) {
     if (args.length < 2) {
       return {
-        type: 'response',
-        requestId,
         success: false,
-        error: 'Usage: /sheet-show <topic> <cell>',
-        timestamp: Date.now()
+        error: 'Usage: /sheet-show <topic> <cell>'
       }
     }
 
@@ -241,8 +296,6 @@ Available Commands:
     const cell = this.spreadsheetEngine.getCell(cellRef)
 
     return {
-      type: 'response',
-      requestId,
       success: true,
       data: {
         topic: requestedTopic,
@@ -250,22 +303,18 @@ Available Commands:
         value: cell.value,
         formula: cell.formula,
         error: cell.error
-      },
-      timestamp: Date.now()
+      }
     }
   }
 
   /**
    * Handle write command: /sheet-write <topic> <cell>=<value>
    */
-  async handleWrite (args, requestId) {
+  async handleWrite (args) {
     if (args.length < 2) {
       return {
-        type: 'response',
-        requestId,
         success: false,
-        error: 'Usage: /sheet-write <topic> <cell>=<value>',
-        timestamp: Date.now()
+        error: 'Usage: /sheet-write <topic> <cell>=<value>'
       }
     }
 
@@ -281,11 +330,8 @@ Available Commands:
     const match = assignment.match(/^([A-Z]+\d+)=(.+)$/)
     if (!match) {
       return {
-        type: 'response',
-        requestId,
         success: false,
-        error: 'Invalid assignment format. Use: <cell>=<value> (e.g., A1=25)',
-        timestamp: Date.now()
+        error: 'Invalid assignment format. Use: <cell>=<value> (e.g., A1=25)'
       }
     }
 
@@ -307,32 +353,26 @@ Available Commands:
     const cell = this.spreadsheetEngine.getCell(cellRef)
 
     return {
-      type: 'response',
-      requestId,
       success: true,
       data: {
         topic: requestedTopic,
         cell: cellRef,
         value: cell.value,
         formula: cell.formula
-      },
-      timestamp: Date.now()
+      }
     }
   }
 
   /**
    * Handle list command: /sheet-list
    */
-  async handleList (args, requestId) {
+  async handleList (args) {
     return {
-      type: 'response',
-      requestId,
       success: true,
       data: {
         topics: Array.from(this.topics),
         currentTopic: this.topic
-      },
-      timestamp: Date.now()
+      }
     }
   }
 

@@ -11,7 +11,7 @@ import {
 } from '@libp2p/circuit-relay-v2'
 import { privateKeyFromProtobuf } from '@libp2p/crypto/keys'
 import { dcutr } from '@libp2p/dcutr'
-import { gossipsub } from '@libp2p/gossipsub'
+import { gossipsub } from '@chainsafe/libp2p-gossipsub'
 import { identify, identifyPush } from '@libp2p/identify'
 import { createEd25519PeerId, createFromJSON } from '@libp2p/peer-id-factory'
 import { ping } from '@libp2p/ping'

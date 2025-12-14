@@ -3,19 +3,22 @@
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
 import { autoNAT } from '@libp2p/autonat'
-import { bootstrap } from '@libp2p/bootstrap'
 import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
 import { dcutr } from '@libp2p/dcutr'
-import { gossipsub } from '@libp2p/gossipsub'
+import { gossipsub } from '@chainsafe/libp2p-gossipsub'
 import { identify, identifyPush } from '@libp2p/identify'
 import { kadDHT, removePrivateAddressesMapper } from '@libp2p/kad-dht'
+import { peerIdFromString } from '@libp2p/peer-id'
 import { ping } from '@libp2p/ping'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
 import { createLibp2p } from 'libp2p'
 import * as Y from 'yjs'
-import { DEBUG, TIMEOUTS, INTERVALS, UC_CHAT_TOPIC, UC_FILE_TOPIC, DISCOVERY_CONFIG } from './constants.js'
+import { DEBUG, TIMEOUTS, INTERVALS, UC_CHAT_TOPIC, UC_FILE_TOPIC, DISCOVERY_CONFIG, BOOTSTRAP_PEER_IDS, PUBSUB_PEER_DISCOVERY_TOPIC } from './constants.js'
+import { sha256 } from 'multiformats/hashes/sha2'
+import { createDelegatedRoutingV1HttpApiClient } from '@helia/delegated-routing-v1-http-api-client'
+import first from 'it-first'
 import {
   getTransportType,
   updatePeerDisplay,
@@ -27,6 +30,7 @@ import {
 } from './spreadsheet-engine.js'
 import { Libp2pProvider } from './yjs-libp2p-provider.js'
 import { UCExtensionAdapter } from './uc-extension-adapter.js'
+import { DirectMessage } from './direct-message.js'
 
 // UI elements (network and logging related)
 const topicInput = document.getElementById('topic')
@@ -50,9 +54,54 @@ let provider
 let spreadsheetEngine
 let spreadsheetUI
 let ucExtensionAdapter
+let directMessageService
 
 // Track peer connection transports to detect upgrades
 const peerTransports = new Map() // peerId -> Set of transport types
+
+// Private chat state
+let currentChatMode = 'group' // 'group' or 'private'
+let currentPrivatePeerId = null
+const privateMessageHistory = new Map() // peerId -> array of messages
+const unreadMessages = new Map() // peerId -> unread count
+
+/**
+ * Message ID function for gossipsub - must match UC's implementation
+ * Uses sequence number to generate unique message IDs
+ * This ensures compatibility with Universal Connectivity peers
+ */
+async function msgIdFnStrictNoSign (msg) {
+  const enc = new TextEncoder()
+  const encodedSeqNum = enc.encode(msg.sequenceNumber.toString())
+  return await sha256.encode(encodedSeqNum)
+}
+
+/**
+ * Get relay listen addresses using delegated routing
+ * Resolves bootstrap peer IDs to actual multiaddrs dialable from the browser
+ */
+async function getRelayListenAddrs (client) {
+  const peers = await Promise.all(
+    BOOTSTRAP_PEER_IDS.map((peerId) => first(client.getPeers(peerIdFromString(peerId))))
+  )
+
+  const relayListenAddrs = []
+  for (const p of peers) {
+    if (p && p.Addrs.length > 0) {
+      for (const maddr of p.Addrs) {
+        const protos = maddr.protoNames()
+        // Filter to Secure WebSockets and IP4 addresses
+        if (protos.includes('tls') && protos.includes('ws')) {
+          const nodeAddress = maddr.nodeAddress()
+          if (nodeAddress.address === '127.0.0.1') continue // skip loopback
+          const relayAddr = `${maddr.toString()}/p2p/${p.ID.toString()}/p2p-circuit`
+          relayListenAddrs.push(relayAddr)
+        }
+      }
+    }
+  }
+  return relayListenAddrs
+}
 
 /**
  * Logs a message to both console and UI (latest messages on top).
@@ -82,14 +131,40 @@ const log = (message, isError = false) => {
  *
  * @param {string} text - Message text
  * @param {boolean} [isSent] - Whether this is a sent message (true) or received (false)
+ * @param {string} [peerId] - Peer ID for private messages
  */
-const displayChatMessage = (text, isSent = false) => {
+const displayChatMessage = (text, isSent = false, peerId = null) => {
   const messageEl = document.createElement('div')
   messageEl.className = `chat-message ${isSent ? 'sent' : 'received'}`
 
   const headerEl = document.createElement('div')
   headerEl.className = 'chat-message-header'
-  headerEl.textContent = isSent ? '📤 You' : '📥 Peer'
+  
+  // Make peer ID clickable if we have one and we're not in private mode with them
+  if (currentChatMode === 'private' && peerId) {
+    const peerShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
+    headerEl.textContent = isSent ? '🔐 You' : `🔐 ${peerShort}`
+  } else if (!isSent && peerId && currentChatMode === 'group') {
+    // Group message - make peer ID clickable
+    const peerShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
+    const peerLink = document.createElement('span')
+    peerLink.textContent = `📥 ${peerShort}`
+    peerLink.style.cursor = 'pointer'
+    peerLink.style.textDecoration = 'underline'
+    peerLink.style.color = '#1565c0'
+    peerLink.title = '🔐 Click to send private message'
+    peerLink.onclick = () => {
+      // Check if peer supports DM
+      if (directMessageService && directMessageService.isDMPeer(peerId)) {
+        switchToPrivateChat(peerId)
+      } else {
+        log('Peer does not support direct messages', true)
+      }
+    }
+    headerEl.appendChild(peerLink)
+  } else {
+    headerEl.textContent = isSent ? '📤 You' : '📥 Peer'
+  }
 
   const textEl = document.createElement('div')
   textEl.className = 'chat-message-text'
@@ -101,6 +176,69 @@ const displayChatMessage = (text, isSent = false) => {
 
   // Scroll to latest message
   chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight
+
+  // Store private messages
+  if (currentChatMode === 'private' && currentPrivatePeerId) {
+    if (!privateMessageHistory.has(currentPrivatePeerId)) {
+      privateMessageHistory.set(currentPrivatePeerId, [])
+    }
+    privateMessageHistory.get(currentPrivatePeerId).push({ text, isSent, timestamp: Date.now() })
+  }
+}
+
+/**
+ * Switch to private chat mode with a specific peer
+ */
+function switchToPrivateChat(peerId) {
+  currentChatMode = 'private'
+  currentPrivatePeerId = peerId
+  
+  // Clear unread count when opening chat
+  unreadMessages.set(peerId, 0)
+  
+  const peerShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
+  const chatHeaderEl = document.getElementById('chat-header')
+  const chatTitleEl = document.getElementById('chat-title')
+  const chatBackBtn = document.getElementById('chat-back-btn')
+  
+  // Update UI
+  chatTitleEl.textContent = `🔐 Private: ${peerShort}`
+  chatHeaderEl.classList.add('private-chat')
+  chatBackBtn.style.display = 'block'
+  
+  // Clear and load private message history
+  chatMessagesEl.innerHTML = ''
+  const history = privateMessageHistory.get(peerId) || []
+  history.forEach(msg => {
+    displayChatMessage(msg.text, msg.isSent, peerId)
+  })
+  
+  log(`🔐 Switched to private chat with ${peerShort}`)
+  
+  // Update peer display to clear unread badge
+  updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl, directMessageService, switchToPrivateChat, UC_CHAT_TOPIC, unreadMessages)
+}
+
+/**
+ * Switch back to group chat mode
+ */
+function switchToGroupChat() {
+  currentChatMode = 'group'
+  currentPrivatePeerId = null
+  
+  const chatHeaderEl = document.getElementById('chat-header')
+  const chatTitleEl = document.getElementById('chat-title')
+  const chatBackBtn = document.getElementById('chat-back-btn')
+  
+  // Update UI
+  chatTitleEl.textContent = '💬 Group Chat'
+  chatHeaderEl.classList.remove('private-chat')
+  chatBackBtn.style.display = 'none'
+  
+  // Clear messages (group messages are shown in real-time)
+  chatMessagesEl.innerHTML = ''
+  
+  log('💬 Switched to group chat')
 }
 
 // Initial stub - will be replaced when connected
@@ -123,47 +261,23 @@ async function connectWithTransports (mode = 'webrtc') {
 
   try {
     // Show connection mode
-    connectionModeEl.textContent = mode === 'webrtc'
-      ? '🔄 Fetching relay WebRTC-Direct addresses...'
-      : '🔄 Fetching relay WebSocket addresses...'
+    connectionModeEl.textContent = '🔄 Connecting to UC network...'
 
-    // Fetch relay addresses dynamically
-    let bootstrapAddresses = []
-    try {
-      const response = await fetch('http://localhost:9094/api/addresses')
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
-      }
-      const addresses = await response.json()
+    // Create delegated routing client
+    const delegatedClient = createDelegatedRoutingV1HttpApiClient('https://delegated-ipfs.dev')
 
-      if (mode === 'webrtc') {
-        bootstrapAddresses = addresses.webrtcDirect
-      } else {
-        bootstrapAddresses = addresses.websocket
-      }
-
-      if (bootstrapAddresses.length === 0) {
-        throw new Error(`No ${mode} addresses available from relay`)
-      }
-
-      log(`Found ${bootstrapAddresses.length} relay ${mode} address(es) from local API:`)
-      bootstrapAddresses.forEach((addr, i) => {
-        log(`  [${i + 1}] ${addr}`)
-      })
-    } catch (err) {
-      log(`⚠️ Failed to fetch relay addresses: ${err.message}`, true)
-      // Fallback to hardcoded addresses from bootstrappers.js
-      bootstrapAddresses = (await import('./bootstrappers.js')).default
-      const envMode = import.meta.env.DEV ? 'DEV' : 'PROD'
-      log(`Using ${envMode} fallback with ${bootstrapAddresses.length} address(es):`)
-      bootstrapAddresses.forEach((addr, i) => {
-        log(`  [${i + 1}] ${addr}`)
-      })
+    // Get relay listen addresses using delegated routing
+    log('🔍 Fetching bootstrap peer addresses via delegated routing...')
+    const relayListenAddrs = await getRelayListenAddrs(delegatedClient)
+    
+    if (relayListenAddrs.length === 0) {
+      throw new Error('No relay addresses found via delegated routing')
     }
-
-    connectionModeEl.textContent = mode === 'webrtc'
-      ? '🔄 Connecting via WebRTC-Direct...'
-      : '🔄 Connecting via WebSocket...'
+    
+    log(`✅ Found ${relayListenAddrs.length} relay address(es) via delegated routing:`)
+    relayListenAddrs.forEach((addr, i) => {
+      log(`  [${i + 1}] ${addr}`)
+    })
 
     // ALWAYS include ALL transports (never disable any)
     const transports = [
@@ -191,10 +305,13 @@ async function connectWithTransports (mode = 'webrtc') {
       })
     ]
 
-    // Create libp2p node with ALL transports always enabled
+    // Create libp2p node matching UC configuration
     libp2pNode = await createLibp2p({
       addresses: {
-        listen: ['/p2p-circuit', '/webrtc']
+        listen: [
+          '/webrtc',
+          ...relayListenAddrs
+        ]
       },
       transports,
       connectionEncrypters: [noise()],
@@ -208,15 +325,13 @@ async function connectWithTransports (mode = 'webrtc') {
         outboundUpgradeTimeout: TIMEOUTS.UPGRADE_OUTBOUND
       },
       connectionGater: {
-        denyDialMultiaddr: () => false
+        denyDialMultiaddr: async () => false
       },
       peerDiscovery: [
-        bootstrap({
-          list: bootstrapAddresses  // Use dynamically fetched addresses
-        }),
         pubsubPeerDiscovery({
-          topics: DISCOVERY_CONFIG.TOPICS,
-          interval: INTERVALS.PUBSUB_PEER_DISCOVERY
+          topics: [PUBSUB_PEER_DISCOVERY_TOPIC],
+          interval: INTERVALS.PUBSUB_PEER_DISCOVERY,
+          listenOnly: false
         })
       ],
       services: {
@@ -227,8 +342,11 @@ async function connectWithTransports (mode = 'webrtc') {
         ping: ping(),
         pubsub: gossipsub({
           emitSelf: false,
-          allowPublishToZeroTopicPeers: true
+          allowPublishToZeroTopicPeers: true,
+          msgIdFn: msgIdFnStrictNoSign,
+          ignoreDuplicatePublishError: true
         }),
+        delegatedRouting: () => delegatedClient,
         dht: kadDHT({
           protocol: '/ipfs/kad/1.0.0',  // Amino DHT protocol for UC interop
           peerInfoMapper: removePrivateAddressesMapper
@@ -266,9 +384,16 @@ async function connectWithTransports (mode = 'webrtc') {
     ucExtensionAdapter = new UCExtensionAdapter(libp2pNode, spreadsheetEngine, topic)
     await ucExtensionAdapter.start()
 
+    // Initialize Direct Message Service
+    directMessageService = new DirectMessage({ libp2p: libp2pNode })
+    await directMessageService.start()
+    await directMessageService.afterStart()
+    log('🔐 Direct Message: Service initialized')
+
     // Expose for testing
     window.spreadsheetUI = spreadsheetUI
     window.ucExtensionAdapter = ucExtensionAdapter
+    window.directMessageService = directMessageService
 
     log('Ready! Open this page in another tab to collaborate.')
     log('UC Extension: Spreadsheet is now available as UC extension')
@@ -297,8 +422,64 @@ async function connectWithTransports (mode = 'webrtc') {
       }
     }
 
-    // Initial display updates
-    updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
+    // Expose sendPrivateMessage function to console
+    // Sends direct peer-to-peer message via Direct Message protocol
+    window.sendPrivateMessage = async (peerIdStr, text) => {
+      if (!libp2pNode || !directMessageService) {
+        console.error('❌ Not connected yet')
+        return
+      }
+      if (!peerIdStr || !text) {
+        console.error('❌ Usage: sendPrivateMessage(peerIdStr, text)')
+        console.log('Example: sendPrivateMessage("12D3KooW...", "Hello!")')
+        return
+      }
+      try {
+        await directMessageService.send(peerIdStr, text)
+        const peerShort = peerIdStr.slice(0, 8) + '...' + peerIdStr.slice(-4)
+        console.log(`✅ Private message sent to ${peerShort}: "${text}"`)
+        log(`🔐 Private message sent to ${peerShort}`)
+      } catch (err) {
+        console.error(`❌ Failed to send private message: ${err.message}`)
+        log(`❌ Private message failed: ${err.message}`, true)
+      }
+    }
+
+    // Listen for incoming private messages
+    libp2pNode.addEventListener('dm:message', (event) => {
+      const { content, peerId, timestamp } = event.detail
+      const peerShort = peerId ? peerId.slice(0, 8) + '...' + peerId.slice(-4) : 'unknown'
+      
+      console.log(`🔐 Private message from ${peerShort}: "${content}"`)
+      log(`🔐 Private message from ${peerShort}`)
+      
+      // Store message in history
+      if (!privateMessageHistory.has(peerId)) {
+        privateMessageHistory.set(peerId, [])
+      }
+      privateMessageHistory.get(peerId).push({ text: content, isSent: false, timestamp })
+      
+      // Display message if we're in private chat with this peer
+      if (currentChatMode === 'private' && currentPrivatePeerId === peerId) {
+        displayChatMessage(content, false, peerId)
+      } else {
+        // Increment unread count for this peer
+        const currentUnread = unreadMessages.get(peerId) || 0
+        unreadMessages.set(peerId, currentUnread + 1)
+        // Show notification that we received a message from someone else
+        log(`📫 New private message from ${peerShort}`)
+      }
+      
+      // Update peer display to show new message indicator
+      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl, directMessageService, switchToPrivateChat, UC_CHAT_TOPIC, unreadMessages)
+    })
+
+    // Wire up chat back button
+    const chatBackBtn = document.getElementById('chat-back-btn')
+    chatBackBtn.onclick = () => switchToGroupChat()
+
+    // Initial display updates with DM service, click handler, and topic filter
+    updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl, directMessageService, switchToPrivateChat, UC_CHAT_TOPIC, unreadMessages)
     updateMultiaddrDisplay(libp2pNode, multiaddrsEl, multiaddrSelectEl)
 
     // Show and enable chat panel (sidebar)
@@ -326,7 +507,11 @@ async function connectWithTransports (mode = 'webrtc') {
         // Handle UC chat messages (raw text format)
         if (incomingTopic === UC_CHAT_TOPIC) {
           console.log(`   💬 UC Chat: ${messageText}`)
-          displayChatMessage(`[${fromShort}] ${messageText}`, false)
+          // Only display if in group chat mode
+          if (currentChatMode === 'group') {
+            // Don't include peer ID in text - it's already in the clickable header
+            displayChatMessage(messageText, false, fromPeer)
+          }
         } else {
           // Try to parse as JSON for other topics
           try {
@@ -373,23 +558,43 @@ async function connectWithTransports (mode = 'webrtc') {
       }
     })
 
-    // Send message from input field
-    chatSendButtonEl.onclick = async () => {
+    // Unified send message handler
+    const handleSendMessage = async () => {
       const text = chatMessageInputEl.value.trim()
-      if (text) {
-        await window.sendMessage(text)
+      if (!text) return
+      
+      console.log(`📤 Sending message in ${currentChatMode} mode:`, text)
+      
+      try {
+        if (currentChatMode === 'private' && currentPrivatePeerId) {
+          // Send private message
+          console.log(`🔐 Sending DM to ${currentPrivatePeerId}`)
+          await directMessageService.send(currentPrivatePeerId, text)
+          console.log(`✅ DM sent, displaying message...`)
+          displayChatMessage(text, true, currentPrivatePeerId)
+          const peerShort = currentPrivatePeerId.slice(0, 8) + '...' + currentPrivatePeerId.slice(-4)
+          log(`🔐 Private message sent to ${peerShort}`)
+        } else {
+          // Send group message
+          const encoder = new TextEncoder()
+          const bytes = encoder.encode(text)
+          await libp2pNode.services.pubsub.publish(UC_CHAT_TOPIC, bytes)
+          displayChatMessage(text, true)
+        }
         chatMessageInputEl.value = ''
+      } catch (err) {
+        console.error(`❌ Failed to send message: ${err.message}`)
+        log(`❌ Failed to send message: ${err.message}`, true)
       }
     }
+
+    // Send message from input field
+    chatSendButtonEl.onclick = handleSendMessage
 
     // Send message on Enter key
     chatMessageInputEl.onkeypress = async (e) => {
       if (e.key === 'Enter') {
-        const text = chatMessageInputEl.value.trim()
-        if (text) {
-          await window.sendMessage(text)
-          chatMessageInputEl.value = ''
-        }
+        await handleSendMessage()
       }
     }
 
@@ -462,7 +667,7 @@ async function connectWithTransports (mode = 'webrtc') {
       }
       peerTransports.get(peerId).add(transport)
 
-      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
+      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl, directMessageService, switchToPrivateChat, UC_CHAT_TOPIC, unreadMessages)
     })
 
     // Listen for individual connection closures
@@ -484,7 +689,7 @@ async function connectWithTransports (mode = 'webrtc') {
       }
       log(`Connection closed: ${peerIdShort} ${transport} ${directionArrow}`)
 
-      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
+      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl, directMessageService, switchToPrivateChat, UC_CHAT_TOPIC, unreadMessages)
     })
 
     libp2pNode.addEventListener('peer:disconnect', (evt) => {
@@ -495,7 +700,7 @@ async function connectWithTransports (mode = 'webrtc') {
       peerTransports.delete(peerId)
 
       log(`Fully disconnected from peer: ${peerIdShort}`)
-      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
+      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl, directMessageService, switchToPrivateChat, UC_CHAT_TOPIC, unreadMessages)
     })
 
     // Update multiaddrs when they change (e.g., relay reservation obtained)
@@ -507,7 +712,7 @@ async function connectWithTransports (mode = 'webrtc') {
     // (to catch any state changes that didn't trigger events)
     const updateInterval = setInterval(() => {
       updateMultiaddrDisplay(libp2pNode, multiaddrsEl, multiaddrSelectEl)
-      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl)
+      updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl, directMessageService, switchToPrivateChat, UC_CHAT_TOPIC, unreadMessages)
     }, 2000) // Check every 2 seconds
 
     // Store interval ID for cleanup

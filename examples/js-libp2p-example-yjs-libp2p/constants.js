@@ -46,7 +46,14 @@ export const DEFAULTS = {
 export const UC_CHAT_TOPIC = 'universal-connectivity'
 export const UC_FILE_TOPIC = 'universal-connectivity-file'
 export const FILE_EXCHANGE_PROTOCOL = '/universal-connectivity-file/1'
+export const DIRECT_MESSAGE_PROTOCOL = '/universal-connectivity/dm/1.0.0'
+export const PUBSUB_PEER_DISCOVERY_TOPIC = 'universal-connectivity-browser-peer-discovery'
+
+// UC Bootstrap peer ID
+export const WEBTRANSPORT_BOOTSTRAP_PEER_ID = '12D3KooWFhXabKDwALpzqMbto94sB7rvmZ6M28hs9Y9xSopDKwQr'
+export const BOOTSTRAP_PEER_IDS = [WEBTRANSPORT_BOOTSTRAP_PEER_ID]
+
 export const DISCOVERY_CONFIG = {
   INTERVAL: 10000,
-  TOPICS: ['universal-connectivity-browser-peer-discovery'] // '_peer-discovery._p2p._pubsub'
+  TOPICS: [PUBSUB_PEER_DISCOVERY_TOPIC] // '_peer-discovery._p2p._pubsub'
 }
