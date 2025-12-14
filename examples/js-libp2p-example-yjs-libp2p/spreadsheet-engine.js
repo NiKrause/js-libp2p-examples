@@ -1122,7 +1122,7 @@ export class SpreadsheetUI {
       for (let col = range.startCol; col <= range.endCol; col++) {
         const coord = coordToA1(row, col)
         this.engine.clearCell(coord)
-        
+
         // Explicitly clear the input value if this cell is currently focused
         // This makes cut operations immediately visible
         const input = document.getElementById(`cell-${coord}`)
@@ -1186,7 +1186,7 @@ export class SpreadsheetUI {
         } else {
           this.engine.setCell(coord, value)
         }
-        
+
         // Explicitly update the input value if this cell is currently focused
         // This makes pasted values immediately visible
         const input = document.getElementById(`cell-${coord}`)

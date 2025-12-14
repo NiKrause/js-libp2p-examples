@@ -31,16 +31,16 @@ test.describe('Copy/Paste Feature', () => {
 
     // Click on A1 to select it
     await page.locator('#cell-A1').click()
-    
+
     // Verify focus before copying - this ensures the element is actually focused
     await expect(page.locator('#cell-A1')).toBeFocused()
-    
+
     await page.keyboard.press('ControlOrMeta+C')
 
     // Navigate to B1 and paste
     await page.locator('#cell-B1').click()
     await expect(page.locator('#cell-B1')).toBeFocused()
-    
+
     await page.keyboard.press('ControlOrMeta+V')
 
     // Wait for paste feedback
@@ -122,7 +122,7 @@ test.describe('Copy/Paste Feature', () => {
     // Paste into B3
     await page.locator('#cell-B3').click()
     await page.keyboard.press('ControlOrMeta+V')
-    
+
     // Verify the value appears immediately in B3
     await page.waitForFunction(
       () => {
@@ -184,7 +184,7 @@ test.describe('Copy/Paste Feature', () => {
     // Paste into C1
     await page.locator('#cell-C1').click()
     await page.keyboard.press('ControlOrMeta+V')
-    
+
     // Leave the cell (focus another one) so the pasted value becomes visible
     await page.locator('#cell-D1').click()
 
@@ -247,7 +247,7 @@ test.describe('Copy/Paste Feature', () => {
       },
       { timeout: 5000 }
     )
-    
+
     const a1Value = await page.locator('#cell-A1').inputValue()
     expect(a1Value).toBe('')
 
@@ -310,7 +310,7 @@ test.describe('Copy/Paste Feature', () => {
     // Page 1: Paste into A2
     await page1.locator('#cell-A2').click()
     await page1.keyboard.press('ControlOrMeta+V')
-    
+
     // Wait for A2 to update immediately on page 1
     await page1.waitForFunction(
       () => {
@@ -366,7 +366,7 @@ test.describe('Copy/Paste Feature', () => {
     // Paste into A1
     await page.locator('#cell-A1').click()
     await page.keyboard.press('ControlOrMeta+V')
-    
+
     // Wait for paste feedback
     await page.waitForFunction(
       () => {
