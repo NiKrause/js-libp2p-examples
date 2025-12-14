@@ -90,7 +90,15 @@ export class ExtensionTestClient {
 
       const response = await datastream.read(ext.Response, { signal })
 
-      if (response.payload === 'manifest' && response.manifest?.manifest) {
+      console.log('🔍 Extension Test Client: Received response:', {
+        payload: response.payload,
+        hasManifest: !!response.manifest,
+        hasCommand: !!response.command,
+        responseKeys: Object.keys(response),
+        manifestData: response.manifest
+      })
+
+      if (response.payload === 'manifest' || response.manifest?.manifest) {
         return {
           id: response.manifest.manifest.id,
           name: response.manifest.manifest.name,
