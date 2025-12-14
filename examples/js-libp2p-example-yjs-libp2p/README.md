@@ -9,7 +9,7 @@
 
 ## 🌐 Live Demo
 
-**Try it now:** https://dweb.link/ipfs/bafybeibcs47xrlvt53lcq5eop2jjgxarumnm3ueyes6qydlecudvtwsm4m
+**Try it now:** https://dweb.link/ipfs/bafybeiafjlifcf35kmuudpfoqdoj37oix76bxiuni5miwupjmb3g6vriue
 
 ## Table of Contents <!-- omit in toc -->
 
