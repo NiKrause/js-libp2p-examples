@@ -620,6 +620,12 @@ export class SpreadsheetUI {
     if (this.elements.formulaInput) {
       this.elements.formulaInput.disabled = false
     }
+    // CSV controls are now in the toolbar and always visible
+    // Set up CSV controls if not already done
+    if (typeof window.setupCSVControls === 'function') {
+      window.setupCSVControls()
+      window.setupCSVControls = null // Prevent multiple setups
+    }
   }
 
   /**
@@ -1116,7 +1122,7 @@ export class SpreadsheetUI {
       for (let col = range.startCol; col <= range.endCol; col++) {
         const coord = coordToA1(row, col)
         this.engine.clearCell(coord)
-        
+
         // Explicitly clear the input value if this cell is currently focused
         // This makes cut operations immediately visible
         const input = document.getElementById(`cell-${coord}`)
@@ -1180,7 +1186,7 @@ export class SpreadsheetUI {
         } else {
           this.engine.setCell(coord, value)
         }
-        
+
         // Explicitly update the input value if this cell is currently focused
         // This makes pasted values immediately visible
         const input = document.getElementById(`cell-${coord}`)

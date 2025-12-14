@@ -124,7 +124,7 @@ export function updatePeerDisplay (libp2pNode, peerCountEl, peersEl, peerListEl)
 
   // Show/hide peers section
   if (peerMap.size > 0) {
-    peersEl.style.display = 'block'
+    peersEl.style.display = 'flex'
   } else {
     peersEl.style.display = 'none'
   }
@@ -168,8 +168,8 @@ export function updateMultiaddrDisplay (libp2pNode, multiaddrsEl, multiaddrSelec
 
   const multiaddrs = libp2pNode.getMultiaddrs()
 
-  // Always show the section, even if empty
-  multiaddrsEl.style.display = 'block'
+  // Hide multiaddrs in new layout (technical details only)
+  multiaddrsEl.style.display = 'none'
 
   if (multiaddrs.length > 0) {
     multiaddrSelectEl.innerHTML = ''

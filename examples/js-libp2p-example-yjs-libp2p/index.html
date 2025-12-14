@@ -5,89 +5,164 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Collaborative Spreadsheet - Yjs + libp2p</title>
     <style>
+      * {
+        box-sizing: border-box;
+      }
       body {
-        font-family:
-          system-ui,
-          -apple-system,
-          Segoe UI,
-          Roboto,
-          Helvetica,
-          Arial,
-          sans-serif;
-        margin: 2rem;
-      }
-      #status {
-        margin-bottom: 1rem;
-      }
-      .row {
-        display: flex;
-        gap: 1rem;
-        margin-bottom: 1rem;
-      }
-      .row > * {
-        flex: 1;
-      }
-      #peers {
-        background: #fff;
-      }
-      #peer-list {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        margin: 0;
         background: #f5f5f5;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
       }
-      .peer {
-        margin: 0.5rem 0;
-        padding: 0.5rem;
+      
+      /* Header */
+      .app-header {
         background: white;
-        border-radius: 4px;
+        border-bottom: 1px solid #e0e0e0;
+        padding: 0.75rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        z-index: 100;
       }
-      .peer-id {
-        font-family: ui-monospace, monospace;
-        font-size: 0.8em;
-        word-break: break-all;
+      .app-title {
+        margin: 0;
+        font-size: 1.25rem;
         color: #1565c0;
       }
-      .transport {
-        display: inline-block;
-        background: #e0e0e0;
-        padding: 0.2rem 0.5rem;
-        border-radius: 3px;
-        margin: 0.2rem;
-        font-size: 0.85em;
-        color: white;
-        font-weight: 500;
+      .app-subtitle {
+        margin: 0;
+        font-size: 0.85rem;
+        color: #666;
+        font-weight: normal;
       }
-      .transport.relay {
-        background: #ff9800;
+      .header-controls {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
       }
-      .transport.relay\+webrtc {
-        background: #8bc34a;
+      .topic-control {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
       }
-      .transport.webrtc {
-        background: #4caf50;
-      }
-      .transport.websocket {
-        background: #2196f3;
-      }
-      .transport.websocket-secure {
-        background: #1565c0;
-      }
-
-      /* Spreadsheet styles */
-      #spreadsheet-container {
-        margin-top: 1rem;
-        overflow: auto;
-        max-height: 600px;
+      .topic-control input {
+        padding: 0.375rem 0.5rem;
         border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.9rem;
       }
+      .connection-status {
+        font-size: 0.9rem;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        background: #fff3e0;
+        color: #f57c00;
+      }
+      
+      /* Main Layout */
+      .app-body {
+        flex: 1;
+        display: flex;
+        overflow: hidden;
+      }
+      
+      /* Main Content */
+      .main-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        background: white;
+        margin: 1rem 0 1rem 1rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+      }
+      
+      /* Toolbar */
+      .toolbar {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #e0e0e0;
+        background: #fafafa;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+      .toolbar-group {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding-right: 0.75rem;
+        border-right: 1px solid #e0e0e0;
+      }
+      .toolbar-group:last-child {
+        border-right: none;
+      }
+      .toolbar button {
+        padding: 0.375rem 0.75rem;
+        border: 1px solid #ddd;
+        background: white;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+      }
+      .toolbar button:hover {
+        background: #f0f0f0;
+        border-color: #bbb;
+      }
+      .toolbar input[type="file"] {
+        display: none;
+      }
+      
+      /* Formula Bar */
+      .formula-bar {
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid #e0e0e0;
+        background: white;
+        display: none;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .formula-bar label {
+        font-weight: 600;
+        color: #333;
+        min-width: 3rem;
+      }
+      .formula-bar input {
+        flex: 1;
+        padding: 0.375rem 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+      }
+      
+      /* Spreadsheet Area */
+      .spreadsheet-area {
+        flex: 1;
+        padding: 1rem;
+        overflow: auto;
+        background: white;
+      }
+      .spreadsheet-container {
+        display: none;
+      }
+      
+      /* Spreadsheet styles */
       #spreadsheet {
         border-collapse: collapse;
         background: white;
+        width: 100%;
       }
       #spreadsheet th {
         background: #f5f5f5;
         padding: 0.5rem;
         border: 1px solid #ddd;
         font-weight: 600;
-        min-width: 40px;
+        min-width: 60px;
         text-align: center;
       }
       #spreadsheet td {
@@ -112,84 +187,37 @@
       #spreadsheet td.error input {
         color: #d32f2f;
       }
-      #formula-bar {
-        margin-bottom: 0.5rem;
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-      }
-      #formula-bar label {
-        font-weight: 600;
-      }
-      #formula-input {
-        flex: 1;
-        padding: 0.5rem;
-        border: 1px solid #ddd;
-        font-family: ui-monospace, monospace;
-      }
-      #formula-input:disabled {
-        background: #f5f5f5;
-      }
-      .examples {
-        margin-top: 1rem;
-        padding: 1rem;
-        background: #f9f9f9;
-        border-radius: 4px;
-      }
-      .examples h3 {
-        margin-top: 0;
-      }
-      .examples code {
+      
+      /* Right Sidebar */
+      .sidebar {
+        width: 300px;
         background: white;
-        padding: 0.2rem 0.4rem;
-        border-radius: 3px;
-      }
-      #peer-id-display {
-        background: #e3f2fd;
-        padding: 0.75rem 1rem;
-        border-radius: 4px;
-        margin-bottom: 1rem;
-        font-family: ui-monospace, monospace;
-        font-size: 0.9em;
-        border: 1px solid #90caf9;
-      }
-      #peer-id-display strong {
-        font-family: system-ui;
-        margin-right: 0.5rem;
-      }
-      #peer-id-value {
-        color: #1565c0;
-        font-weight: 600;
-      }
-      #multiaddrs {
-        background: #fff;
-      }
-      #multiaddrs .accordion-content > div {
-        background: #f0f7ff;
-      }
-      #multiaddr-select {
-        width: 100%;
-        padding: 0.5rem;
-        font-family: ui-monospace, monospace;
-        font-size: 0.85em;
-        border: 1px solid #90caf9;
-        border-radius: 4px;
-        background: white;
-      }
-      /* Chat styles */
-      #chat-panel {
-        background: #fff;
-      }
-      #chat-panel .accordion-content {
+        margin: 1rem 1rem 1rem 0;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         display: flex;
         flex-direction: column;
+        overflow: hidden;
       }
-      #chat-messages {
+      
+      /* Chat Panel */
+      .chat-panel {
         flex: 1;
+        display: none;
+        flex-direction: column;
+        border-bottom: 1px solid #e0e0e0;
+      }
+      .chat-header {
+        padding: 0.75rem 1rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e0e0e0;
+        font-weight: 600;
+        color: #333;
+      }
+      .chat-messages {
+        flex: 1;
+        padding: 0.5rem;
         overflow-y: auto;
-        padding: 1rem;
-        background: white;
-        min-height: 150px;
         max-height: 200px;
       }
       .chat-message {
@@ -216,188 +244,351 @@
         word-break: break-word;
         font-size: 0.95em;
       }
-      #chat-input-area {
+      .chat-input-area {
+        padding: 0.5rem;
+        border-top: 1px solid #e0e0e0;
         display: flex;
         gap: 0.5rem;
-        padding: 1rem;
-        background: #f9f9f9;
-        border-top: 1px solid #ddd;
       }
-      #chat-message-input {
+      .chat-input-area input {
         flex: 1;
-        padding: 0.5rem;
+        padding: 0.375rem 0.5rem;
         border: 1px solid #ddd;
         border-radius: 4px;
-        font-family: inherit;
+        font-size: 0.9rem;
       }
-      #chat-send-button {
-        padding: 0.5rem 1rem;
-        background: #2196f3;
+      .chat-input-area button {
+        padding: 0.375rem 0.75rem;
+        border: 1px solid #1565c0;
+        background: #1565c0;
         color: white;
-        border: none;
         border-radius: 4px;
         cursor: pointer;
-        font-weight: 500;
+        font-size: 0.9rem;
       }
-      #chat-send-button:hover {
+      .chat-input-area button:hover {
         background: #1976d2;
       }
-      #chat-send-button:disabled {
+      .chat-input-area button:disabled {
         background: #ccc;
         cursor: not-allowed;
       }
-
-      /* Accordion styles */
-      .accordion {
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        margin-top: 1rem;
-        overflow: hidden;
+      
+      /* Peers Panel */
+      .peers-panel {
+        min-height: 120px;
+        display: none;
+        flex-direction: column;
       }
-      .accordion-header {
+      .peers-header {
+        padding: 0.75rem 1rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e0e0e0;
+        font-weight: 600;
+        color: #333;
+      }
+      .peers-list {
+        padding: 0.5rem;
+        overflow-y: auto;
+        background: #fafafa;
+        flex: 1;
+      }
+      .peer {
+        margin: 0.25rem 0;
+        padding: 0.5rem;
+        background: white;
+        border-radius: 4px;
+        border: 1px solid #e0e0e0;
+      }
+      .peer-id {
+        font-family: ui-monospace, monospace;
+        font-size: 0.75em;
+        word-break: break-all;
+        color: #1565c0;
+      }
+      .transport {
+        display: inline-block;
+        background: #e0e0e0;
+        color: #333;
+        padding: 0.1rem 0.3rem;
+        border-radius: 3px;
+        font-size: 0.7em;
+        margin: 0.1rem 0.1rem 0 0;
+      }
+      .transport.webrtc { background: #4caf50; color: white; }
+      .transport.websocket { background: #ff9800; color: white; }
+      .transport.relay-webrtc { background: #9c27b0; color: white; }
+      
+      /* Bottom Panel */
+      .bottom-panel {
+        margin: 0 1rem 1rem 1rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      }
+      .bottom-panel-header {
+        padding: 0.75rem 1rem;
+        background: #f8f9fa;
+        border-bottom: 1px solid #e0e0e0;
+        cursor: pointer;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        padding: 0.75rem 1rem;
-        background: #f5f5f5;
-        cursor: pointer;
-        user-select: none;
+        gap: 0.5rem;
+        font-weight: 600;
+        border-radius: 8px 8px 0 0;
         border: none;
         width: 100%;
         text-align: left;
         font-family: inherit;
         font-size: inherit;
       }
-      .accordion-header:hover {
-        background: #ebebeb;
+      .bottom-panel-header:hover {
+        background: #eeeeee;
       }
-      .accordion-header h3 {
-        margin: 0;
-        font-size: 1em;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
+      .panel-icon {
+        transition: transform 0.2s;
       }
-      .accordion-icon {
-        font-size: 0.8em;
-        transition: transform 0.2s ease;
-      }
-      .accordion.collapsed .accordion-icon {
+      .bottom-panel.collapsed .panel-icon {
         transform: rotate(-90deg);
       }
-      .accordion-content {
-        transition: max-height 0.3s ease, padding 0.3s ease;
+      .bottom-panel-content {
+        max-height: 300px;
         overflow: hidden;
+        transition: max-height 0.3s ease;
       }
-      .accordion.collapsed .accordion-content {
-        max-height: 0 !important;
-        padding-top: 0 !important;
-        padding-bottom: 0 !important;
+      .bottom-panel.collapsed .bottom-panel-content {
+        max-height: 0;
+      }
+      .peer-id-display {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #e0e0e0;
+        background: #f9f9f9;
+        font-size: 0.9em;
+        display: none;
+      }
+      .peer-id-display strong {
+        margin-right: 0.5rem;
+      }
+      .peer-id-value {
+        font-family: monospace;
+        color: #1565c0;
+        word-break: break-all;
+      }
+      .activity-log {
+        padding: 1rem;
+      }
+      #log {
+        width: 100%;
+        height: 200px;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85em;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        resize: vertical;
+        background: #fafafa;
+      }
+      
+      /* CSV Paste Area */
+      .csv-paste-area {
+        display: none;
+        margin-top: 0.5rem;
+      }
+      .csv-paste-area textarea {
+        width: 100%;
+        height: 100px;
+        font-family: monospace;
+        font-size: 0.85em;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        resize: vertical;
+      }
+      .csv-paste-buttons {
+        margin-top: 0.5rem;
+        display: flex;
+        gap: 0.5rem;
+      }
+      
+      /* Examples */
+      .examples {
+        display: none;
+        background: #f8f9fa;
+        padding: 1rem;
+        margin: 1rem;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+      }
+      .examples h3 {
+        margin: 0 0 0.75rem 0;
+        color: #333;
+        font-size: 1rem;
+      }
+      .examples ul {
+        margin: 0;
+        padding-left: 1.5rem;
+      }
+      .examples li {
+        margin: 0.25rem 0;
+        font-size: 0.9rem;
+      }
+      .examples code {
+        background: white;
+        padding: 0.2rem 0.4rem;
+        border-radius: 3px;
+        border: 1px solid #ddd;
+      }
+      
+      /* Hidden elements */
+      .hidden {
+        display: none !important;
+      }
+      
+      /* Responsive */
+      @media (max-width: 768px) {
+        .app-body {
+          flex-direction: column;
+        }
+        .sidebar {
+          width: 100%;
+          margin: 0 1rem 1rem 1rem;
+        }
+        .header-controls {
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 0.5rem;
+        }
+        .toolbar {
+          overflow-x: auto;
+        }
       }
     </style>
   </head>
   <body>
-    <h1>Collaborative Spreadsheet</h1>
-    <p>P2P Spreadsheet with formulas powered by Yjs + libp2p</p>
-
-    <div id="peer-id-display" style="display: none">
-      <strong>My Peer ID:</strong> <span id="peer-id-value"></span>
+    <!-- Header -->
+    <div class="app-header">
+      <div>
+        <h1 class="app-title">Collaborative Spreadsheet</h1>
+        <p class="app-subtitle">P2P Spreadsheet with formulas powered by Yjs + libp2p</p>
+      </div>
+      <div class="header-controls">
+        <div class="topic-control">
+          <label>Topic:</label>
+          <input id="topic" value="spreadsheet-1" />
+        </div>
+        <div id="connection-mode" class="connection-status">🔄 Auto-connecting...</div>
+      </div>
     </div>
 
-    <div id="status">
-      <label>Topic: <input id="topic" value="spreadsheet-1" /></label>
-      <div id="connection-mode" style="margin-top: 0.5rem; font-size: 0.9em; color: #666;">🔄 Auto-connecting...</div>
-    </div>
+    <!-- Main App Body -->
+    <div class="app-body">
+      <!-- Main Content -->
+      <div class="main-content">
+        <!-- Toolbar -->
+        <div class="toolbar">
+          <div class="toolbar-group">
+            <button id="csv-download-btn" title="Download spreadsheet as CSV file">📥 Download</button>
+            <button id="csv-copy-btn" title="Copy spreadsheet as CSV to clipboard">📋 Copy</button>
+            <input type="file" id="csv-upload-input" accept=".csv" />
+            <button id="csv-upload-btn" title="Upload CSV file to spreadsheet">📤 Upload</button>
+            <button id="csv-paste-toggle" title="Show/hide CSV paste area">📋 Paste</button>
+          </div>
+          <div class="toolbar-group">
+            <button disabled title="Undo (Ctrl+Z)">↶ Undo</button>
+            <button disabled title="Redo (Ctrl+Y)">↷ Redo</button>
+          </div>
+        </div>
 
-    <div id="formula-bar" style="display: none">
-      <label id="cell-ref">A1:</label>
-      <input
-        id="formula-input"
-        type="text"
-        placeholder="Enter value or formula (e.g., =A1+B1)"
-        disabled
-      />
-    </div>
+        <!-- CSV Paste Area -->
+        <div id="csv-paste-area" class="csv-paste-area">
+          <textarea id="csv-paste-input" placeholder="Paste CSV content here..."></textarea>
+          <div class="csv-paste-buttons">
+            <button id="csv-import-btn">Import CSV Data</button>
+            <button id="csv-clear-btn">Clear</button>
+          </div>
+        </div>
 
-    <div id="spreadsheet-container" style="display: none">
-      <table id="spreadsheet"></table>
-    </div>
+        <!-- Formula Bar -->
+        <div id="formula-bar" class="formula-bar">
+          <label id="cell-ref">A1:</label>
+          <input id="formula-input" type="text" placeholder="Enter value or formula (e.g., =A1+B1)" disabled />
+        </div>
 
-    <div class="examples" style="display: none" id="examples">
-      <h3>Formula Examples</h3>
-      <ul>
-        <li><code>=A1+B1</code> - Add two cells</li>
-        <li><code>=A1*2</code> - Multiply by constant</li>
-        <li><code>=SUM(A1:A10)</code> - Sum a range</li>
-        <li><code>=(A1+B1)/2</code> - Average of two cells</li>
-      </ul>
-      
-      <h3>Keyboard Shortcuts</h3>
-      <ul>
-        <li><code>Ctrl+C</code> / <code>Cmd+C</code> - Copy cell</li>
-        <li><code>Ctrl+X</code> / <code>Cmd+X</code> - Cut cell</li>
-        <li><code>Ctrl+V</code> / <code>Cmd+V</code> - Paste cell</li>
-        <li><code>Ctrl+Z</code> / <code>Cmd+Z</code> - Undo</li>
-        <li><code>Ctrl+Y</code> / <code>Cmd+Y</code> / <code>Ctrl+Shift+Z</code> - Redo</li>
-        <li><code>Enter</code> - Move down</li>
-        <li><code>Tab</code> - Move right</li>
-        <li><code>Arrow keys</code> - Navigate</li>
-        <li><code>Esc</code> - Cancel edit</li>
-      </ul>
-    </div>
+        <!-- Spreadsheet -->
+        <div class="spreadsheet-area">
+          <div id="spreadsheet-container" class="spreadsheet-container">
+            <table id="spreadsheet"></table>
+          </div>
+        </div>
+      </div>
 
-    <!-- Chat accordion (top) -->
-    <div id="chat-panel" class="accordion collapsed" style="display: none;">
-      <button class="accordion-header" onclick="this.parentElement.classList.toggle('collapsed')">
-        <h3><span class="accordion-icon">▼</span> Chat</h3>
-      </button>
-      <div class="accordion-content" style="max-height: 350px;">
-        <div id="chat-messages"></div>
-        <div id="chat-input-area">
-          <input 
-            id="chat-message-input" 
-            type="text" 
-            placeholder="Type a message... (or use sendMessage('hello') in console)"
-            disabled
-          />
-          <button id="chat-send-button" disabled>Send</button>
+      <!-- Right Sidebar -->
+      <div class="sidebar">
+        <!-- Chat Panel -->
+        <div id="chat-panel" class="chat-panel">
+          <div class="chat-header">💬 Chat</div>
+          <div id="chat-messages" class="chat-messages"></div>
+          <div class="chat-input-area">
+            <input id="chat-message-input" type="text" placeholder="Type a message..." disabled />
+            <button id="chat-send-button" disabled>Send</button>
+          </div>
+        </div>
+
+        <!-- Peers Panel -->
+        <div id="peers-panel" class="peers-panel">
+          <div class="peers-header">👥 Connected Peers (<span id="peer-count">0</span>)</div>
+          <div id="peer-list" class="peers-list"></div>
         </div>
       </div>
     </div>
 
-    <!-- Multiaddresses accordion -->
-    <div id="multiaddrs" class="accordion collapsed" style="display: none;">
-      <button class="accordion-header" onclick="this.parentElement.classList.toggle('collapsed')">
-        <h3><span class="accordion-icon">▼</span> My Multiaddresses</h3>
+    <!-- Bottom Panel -->
+    <div class="bottom-panel collapsed">
+      <button class="bottom-panel-header" onclick="this.parentElement.classList.toggle('collapsed')">
+        <span class="panel-icon">▼</span> Peer-To-Peer Details
       </button>
-      <div class="accordion-content" style="max-height: 200px;">
-        <div style="padding: 1rem;">
+      <div class="bottom-panel-content">
+        <div style="padding: 0.75rem; background: #f8f9fa; border-bottom: 1px solid #e9ecef; font-size: 0.9em; color: #6c757d;">
+          <strong>About this section:</strong> View your peer ID, connection logs, and network details for debugging P2P connectivity and understanding how your browser connects to other peers.
+        </div>
+        <div id="peer-id-display" class="peer-id-display">
+          <strong>My Peer ID:</strong> <span id="peer-id-value" class="peer-id-value"></span>
+        </div>
+        <div class="activity-log">
+          <textarea id="log" readonly placeholder="Activity log will appear here..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Hidden/Legacy Elements -->
+    <div class="hidden">
+      <div class="examples" id="examples">
+        <h3>Formula Examples</h3>
+        <ul>
+          <li><code>=A1+B1</code> - Add two cells</li>
+          <li><code>=A1*2</code> - Multiply by constant</li>
+          <li><code>=SUM(A1:A10)</code> - Sum a range</li>
+          <li><code>=(A1+B1)/2</code> - Average of two cells</li>
+        </ul>
+        
+        <h3>Keyboard Shortcuts</h3>
+        <ul>
+          <li><code>Ctrl+C</code> / <code>Cmd+C</code> - Copy cell</li>
+          <li><code>Ctrl+X</code> / <code>Cmd+X</code> - Cut cell</li>
+          <li><code>Ctrl+V</code> / <code>Cmd+V</code> - Paste cell</li>
+          <li><code>Ctrl+Z</code> / <code>Cmd+Z</code> - Undo</li>
+          <li><code>Ctrl+Y</code> / <code>Cmd+Y</code> / <code>Ctrl+Shift+Z</code> - Redo</li>
+          <li><code>Enter</code> - Move down</li>
+          <li><code>Tab</code> - Move right</li>
+          <li><code>Arrow keys</code> - Navigate</li>
+          <li><code>Esc</code> - Cancel edit</li>
+        </ul>
+      </div>
+
+      <div id="multiaddrs">
+        <div>
           <select id="multiaddr-select" size="5"></select>
         </div>
-      </div>
-    </div>
-
-    <!-- Connected Peers accordion -->
-    <div id="peers" class="accordion collapsed" style="display: none;">
-      <button class="accordion-header" onclick="this.parentElement.classList.toggle('collapsed')">
-        <h3><span class="accordion-icon">▼</span> Connected Peers (<span id="peer-count">0</span>)</h3>
-      </button>
-      <div class="accordion-content" style="max-height: 400px; overflow-y: auto;">
-        <div id="peer-list" style="padding: 1rem;"></div>
-      </div>
-    </div>
-
-    <!-- Activity Log accordion -->
-    <div class="accordion collapsed">
-      <button class="accordion-header" onclick="this.parentElement.classList.toggle('collapsed')">
-        <h3><span class="accordion-icon">▼</span> Activity Log</h3>
-      </button>
-      <div class="accordion-content" style="max-height: 250px;">
-        <textarea 
-          id="log" 
-          readonly 
-          style="width: 100%; height: 200px; font-family: ui-monospace, monospace; font-size: 0.9em; padding: 0.5rem; border: none; border-top: 1px solid #ddd; resize: vertical; background: #f9f9f9; box-sizing: border-box;"
-        ></textarea>
       </div>
     </div>
 
