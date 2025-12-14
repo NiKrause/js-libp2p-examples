@@ -8,10 +8,18 @@ const url = 'http://localhost:5173'
 test.describe('Copy/Paste Feature', () => {
   test.setTimeout(120000)
 
-  test('should copy and paste a single cell value', async ({ browser }) => {
+  test('should copy and paste a single cell value', async ({ browser, browserName }) => {
     const context = await browser.newContext()
-    // Grant clipboard permissions for copy/paste operations
-    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+
+    // Grant clipboard permissions for copy/paste operations (Chrome only)
+    if (browserName === 'chromium') {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    } else if (browserName === 'firefox') {
+      // Firefox doesn't support grantPermissions for clipboard
+      // Clipboard functionality relies on firefoxUserPrefs in playwright.config.js
+      console.log('Firefox: Using clipboard preferences from config')
+    }
+
     const page = await context.newPage()
 
     await page.goto(url)
@@ -69,9 +77,13 @@ test.describe('Copy/Paste Feature', () => {
     await context.close()
   })
 
-  test('should copy and paste a formula', async ({ browser }) => {
+  test('should copy and paste a formula', async ({ browser, browserName }) => {
     const context = await browser.newContext()
-    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+
+    if (browserName === 'chromium') {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    }
+
     const page = await context.newPage()
 
     await page.goto(url)
@@ -143,9 +155,13 @@ test.describe('Copy/Paste Feature', () => {
     await context.close()
   })
 
-  test('should cut and clear the source cell', async ({ browser }) => {
+  test('should cut and clear the source cell', async ({ browser, browserName }) => {
     const context = await browser.newContext()
-    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+
+    if (browserName === 'chromium') {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    }
+
     const page = await context.newPage()
 
     await page.goto(url)
@@ -214,9 +230,13 @@ test.describe('Copy/Paste Feature', () => {
     await context.close()
   })
 
-  test('should immediately clear cell value when cutting', async ({ browser }) => {
+  test('should immediately clear cell value when cutting', async ({ browser, browserName }) => {
     const context = await browser.newContext()
-    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+
+    if (browserName === 'chromium') {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    }
+
     const page = await context.newPage()
 
     await page.goto(url)
@@ -256,11 +276,14 @@ test.describe('Copy/Paste Feature', () => {
     await context.close()
   })
 
-  test('should sync copy/paste between two browsers', async ({ browser }) => {
+  test('should sync copy/paste between two browsers', async ({ browser, browserName }) => {
     const context1 = await browser.newContext()
-    await context1.grantPermissions(['clipboard-read', 'clipboard-write'])
     const context2 = await browser.newContext()
-    await context2.grantPermissions(['clipboard-read', 'clipboard-write'])
+
+    if (browserName === 'chromium') {
+      await context1.grantPermissions(['clipboard-read', 'clipboard-write'])
+      await context2.grantPermissions(['clipboard-read', 'clipboard-write'])
+    }
 
     const page1 = await context1.newPage()
     const page2 = await context2.newPage()
@@ -353,7 +376,9 @@ test.describe('Copy/Paste Feature', () => {
     )
 
     // Grant clipboard permissions
-    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    if (browserName === 'chromium') {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    }
 
     // Simulate external TSV data (like from Excel)
     const tsvData = '100\t200\n300\t400'

@@ -26,8 +26,6 @@ export default defineConfig({
       name: 'firefox',
       use: {
         ...devices['Desktop Firefox'],
-        permissions: ['clipboard-read', 'clipboard-write'],
-        // Enable WebRTC and STUN in Firefox for Playwright
         // Note: Firefox doesn't support Playwright's permissions API like Chromium
         // Instead, we use firefoxUserPrefs to configure permissions
         launchOptions: {
@@ -64,6 +62,11 @@ export default defineConfig({
             'permissions.default.camera': 1,
             'permissions.default.microphone': 1,
             'permissions.default.desktop-notification': 1,
+
+            // Clipboard access for testing
+            'dom.events.asyncClipboard.readText': true,
+            'dom.events.asyncClipboard.clipboardItem': true,
+            'dom.events.testing.asyncClipboard': true,
 
             // Disable security restrictions for testing
             'network.http.referer.disallowCrossSiteRelaxingDefault': false,  // NEW!
