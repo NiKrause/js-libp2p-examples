@@ -99,17 +99,26 @@ export class UCExtensionService {
       // Read the Request wrapper message
       const request = await datastream.read(ext.Request, { signal })
 
+      // Debug: Log received request
+      console.log('🔍 UC Extension: Received request:', {
+        payload: request.payload,
+        hasManifest: !!request.manifest,
+        hasCommand: !!request.command,
+        requestKeys: Object.keys(request)
+      })
+
       let response
 
       // Handle based on request type
-      if (request.payload === 'manifest') {
+      if (request.payload === 'manifest' || request.manifest) {
         console.log(`📨 UC Extension: Manifest request from ${connection.remotePeer.toString().slice(0, 8)}...`)
         response = this.createManifestResponse()
-      } else if (request.payload === 'command') {
+      } else if (request.payload === 'command' || request.command) {
         console.log(`📨 UC Extension: Command "${request.command.command}" from ${connection.remotePeer.toString().slice(0, 8)}...`)
         response = await this.createCommandResponse(request.command)
       } else {
-        throw new Error('Unknown request type')
+        console.error('❌ Unknown request type. Request:', request)
+        throw new Error(`Unknown request type. Payload: ${request.payload}, has manifest: ${!!request.manifest}, has command: ${!!request.command}`)
       }
 
       // Send response if we have one (commands may return null to ignore)

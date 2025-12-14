@@ -31,6 +31,7 @@ import {
 import { Libp2pProvider } from './yjs-libp2p-provider.js'
 import { UCExtensionService } from './uc-extension-service.js'
 import { DirectMessage } from './direct-message.js'
+import { ExtensionTestClient, testExtension } from './extension-test-client.js'
 
 // UI elements (network and logging related)
 const topicInput = document.getElementById('topic')
@@ -55,6 +56,7 @@ let spreadsheetEngine
 let spreadsheetUI
 let ucExtensionService
 let directMessageService
+let extensionTestClient
 
 // Track peer connection transports to detect upgrades
 const peerTransports = new Map() // peerId -> Set of transport types
@@ -396,10 +398,18 @@ async function connectWithTransports (mode = 'webrtc') {
     await directMessageService.afterStart()
     log('🔐 Direct Message: Service initialized')
 
+    // Initialize Extension Test Client (for testing in same tab)
+    extensionTestClient = new ExtensionTestClient(libp2pNode)
+    await extensionTestClient.start()
+    log('🔍 Extension Test Client: Started')
+
     // Expose for testing
     window.spreadsheetUI = spreadsheetUI
     window.ucExtensionService = ucExtensionService
     window.directMessageService = directMessageService
+    window.extensionTestClient = extensionTestClient
+    window.testExtension = testExtension
+    window.listExtensions = () => extensionTestClient.listExtensions()
 
     log('Ready! Open this page in another tab to collaborate.')
     log('UC Extension: Spreadsheet is now available as UC extension')
