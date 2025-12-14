@@ -4,7 +4,30 @@ import { test, expect } from '@playwright/test'
 import { connectToSpreadsheet, waitForWebRTCConnection } from './helpers.js'
 
 const url = 'http://localhost:5173'
-
+// Global cleanup to prevent resource leaks
+test.afterEach(async ({ browser }) => {
+  try {
+    // Close all open contexts
+    const contexts = browser.contexts()
+    for (const context of contexts) {
+      // Stop libp2p nodes if they exist
+      for (const page of context.pages()) {
+        try {
+          await page.evaluate(async () => {
+            if (window.libp2pNode) {
+              await window.libp2pNode.stop()
+            }
+          })
+        } catch (e) {
+          // Ignore errors during cleanup
+        }
+      }
+      await context.close()
+    }
+  } catch (error) {
+    console.warn('Cleanup warning:', error.message)
+  }
+})
 test.describe.skip('undo/redo feature', () => {
   test.setTimeout(120000)
 
