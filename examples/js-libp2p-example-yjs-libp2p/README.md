@@ -106,17 +106,7 @@ Or connect from the [Universal Connectivity chat app](https://universal-connecti
 npm install
 ```
 
-2. Start the relay server:
-```bash
-npm run relay
-```
-
-The relay will output its multiaddr, which looks like:
-```
-/ip4/127.0.0.1/tcp/53472/ws/p2p/12D3KooWABC123...
-```
-
-3. Start the development server:
+2. Start the development server:
 ```bash
 npm start
 ```
