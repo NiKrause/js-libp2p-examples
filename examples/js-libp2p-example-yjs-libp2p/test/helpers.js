@@ -148,7 +148,7 @@ export async function waitForWebRTCConnection (page, timeout = 60000) {
 
     // Then wait for WebRTC transport badge to appear (direct or over relay)
     // Use a shorter timeout with retries to avoid hanging
-    const webrtcTimeout = Math.min(timeout, 30000) // Max 30 seconds for WebRTC upgrade
+    const webrtcTimeout = Math.min(timeout, 20000) // Max 20 seconds for WebRTC upgrade
     try {
       await page.waitForFunction(
         () => {
