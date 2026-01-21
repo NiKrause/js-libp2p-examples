@@ -51,7 +51,9 @@ Key features:
 
 ## UC Extension Protocol (UCEP)
 
-This example implements the **Universal Connectivity Extension Protocol** - a decentralized plugin system for libp2p applications. The spreadsheet is discoverable and controllable as an extension by other UC-compatible apps like the [Universal Connectivity chat](https://github.com/NiKrause/universal-connectivity).
+This example implements the **Universal Connectivity Extension Protocol** - a decentralized plugin system for libp2p applications. The spreadsheet is discoverable and controllable as an extension by other UCEP-compatible apps like the [Universal Connectivity chat](https://github.com/NiKrause/universal-connectivity).
+
+Another implementing app is [LLMesh a browser-based P2P chat mesh](https://github.com/Nkovaturient/LLMesh) where LLM joins as a peer via UCEP extensions, creating a living network where AI and humans chat together in a fully decentralized manner.
 
 ### How It Works
 
