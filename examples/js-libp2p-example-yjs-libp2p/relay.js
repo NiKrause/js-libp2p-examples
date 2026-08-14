@@ -11,9 +11,9 @@ import {
 } from '@libp2p/circuit-relay-v2'
 import { privateKeyFromProtobuf } from '@libp2p/crypto/keys'
 import { dcutr } from '@libp2p/dcutr'
-import { gossipsub } from '@chainsafe/libp2p-gossipsub'
+import { gossipsub } from '@libp2p/gossipsub'
 import { identify, identifyPush } from '@libp2p/identify'
-import { createEd25519PeerId, createFromJSON } from '@libp2p/peer-id-factory'
+import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys'
 import { ping } from '@libp2p/ping'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { tcp } from '@libp2p/tcp'
@@ -29,27 +29,28 @@ import {
   MONITORING
 } from './relay-constants.js'
 
-// Load or generate persistent PeerId
-const PEER_ID_FILE = './relay-peer-id.json'
-let peerId
+// Load or generate a persistent identity.
+//
+// libp2p v3 dropped @libp2p/peer-id-factory: a node is configured with a
+// private key and derives its peer id from it, so the key is what gets stored.
+const PEER_ID_FILE = './relay-private-key.json'
+let privateKey
 
 if (fs.existsSync(PEER_ID_FILE)) {
-  const data = JSON.parse(fs.readFileSync(PEER_ID_FILE, 'utf8'))
-  peerId = await createFromJSON(data)
-  console.log('Loaded existing PeerId:', peerId.toString())
+  const { privKey } = JSON.parse(fs.readFileSync(PEER_ID_FILE, 'utf8'))
+  privateKey = privateKeyFromProtobuf(Buffer.from(privKey, 'base64'))
+  console.log('Loaded existing identity')
 } else {
-  peerId = await createEd25519PeerId()
-  const data = {
-    id: peerId.toString(),
-    privKey: Buffer.from(peerId.privateKey).toString('base64'),
-    pubKey: Buffer.from(peerId.publicKey).toString('base64')
-  }
-  fs.writeFileSync(PEER_ID_FILE, JSON.stringify(data, null, 2))
-  console.log('Generated new PeerId:', peerId.toString())
+  privateKey = await generateKeyPair('Ed25519')
+  fs.writeFileSync(
+    PEER_ID_FILE,
+    JSON.stringify({ privKey: Buffer.from(privateKeyToProtobuf(privateKey)).toString('base64') }, null, 2)
+  )
+  console.log('Generated new identity')
 }
 
 const server = await createLibp2p({
-  privateKey: privateKeyFromProtobuf(peerId.privateKey),
+  privateKey,
   addresses: {
     listen: [
       '/ip4/0.0.0.0/tcp/9091',
