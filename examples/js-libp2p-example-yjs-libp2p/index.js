@@ -15,7 +15,7 @@ import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
 import { createLibp2p } from 'libp2p'
 import * as Y from 'yjs'
-import { DEBUG, TIMEOUTS, INTERVALS, UC_CHAT_TOPIC, UC_FILE_TOPIC, DISCOVERY_CONFIG, BOOTSTRAP_PEER_IDS, PUBSUB_PEER_DISCOVERY_TOPIC } from './constants.js'
+import { DEBUG, TIMEOUTS, INTERVALS, UC_CHAT_TOPIC, UC_FILE_TOPIC, DISCOVERY_CONFIG, BOOTSTRAP_PEER_IDS, PUBSUB_PEER_DISCOVERY_TOPIC, KNOWN_RELAY_MULTIADDRS } from './constants.js'
 import { sha256 } from 'multiformats/hashes/sha2'
 import { createDelegatedRoutingV1HttpApiClient } from '@helia/delegated-routing-v1-http-api-client'
 import first from 'it-first'
@@ -88,6 +88,12 @@ async function getRelayListenAddrs (client) {
   )
 
   const relayListenAddrs = []
+  // Known relays first. Delegated routing only knows peers that announce
+  // themselves there, and a demo that depends on that lookup fails outright
+  // when it returns nothing — which is what happened here.
+  for (const maddr of KNOWN_RELAY_MULTIADDRS) {
+    relayListenAddrs.push(`${maddr}/p2p-circuit`)
+  }
   for (const p of peers) {
     if (p && p.Addrs.length > 0) {
       for (const maddr of p.Addrs) {

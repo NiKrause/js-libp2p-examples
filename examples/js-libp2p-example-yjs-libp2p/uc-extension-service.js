@@ -64,7 +64,7 @@ export class UCExtensionService {
    */
   async afterStart () {
     // Register protocol handler for incoming requests
-    await this.libp2p.handle(EXTENSION_PROTOCOL, async ({ stream, connection }) => {
+    await this.libp2p.handle(EXTENSION_PROTOCOL, async (stream, connection) => {
       await this.handleRequest(stream, connection)
     })
 
