@@ -2,23 +2,20 @@
 
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
-import { autoNAT } from '@libp2p/autonat'
 import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
 import { dcutr } from '@libp2p/dcutr'
 import { gossipsub } from '@chainsafe/libp2p-gossipsub'
 import { identify, identifyPush } from '@libp2p/identify'
-import { kadDHT, removePrivateAddressesMapper } from '@libp2p/kad-dht'
-import { peerIdFromString } from '@libp2p/peer-id'
 import { ping } from '@libp2p/ping'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
 import { createLibp2p } from 'libp2p'
 import * as Y from 'yjs'
-import { DEBUG, TIMEOUTS, INTERVALS, UC_CHAT_TOPIC, UC_FILE_TOPIC, DISCOVERY_CONFIG, BOOTSTRAP_PEER_IDS, PUBSUB_PEER_DISCOVERY_TOPIC } from './constants.js'
+import { DEBUG, TIMEOUTS, INTERVALS, UC_CHAT_TOPIC, UC_FILE_TOPIC, DISCOVERY_CONFIG, PUBSUB_PEER_DISCOVERY_TOPIC } from './constants.js'
+import { resolveRelayBootstrapAddrs, selectAnnounceAddrs, toCircuitListenAddrs } from './aleph-bootstrap.js'
 import { sha256 } from 'multiformats/hashes/sha2'
 import { createDelegatedRoutingV1HttpApiClient } from '@helia/delegated-routing-v1-http-api-client'
-import first from 'it-first'
 import {
   getTransportType,
   updatePeerDisplay,
@@ -76,33 +73,6 @@ async function msgIdFnStrictNoSign (msg) {
   const enc = new TextEncoder()
   const encodedSeqNum = enc.encode(msg.sequenceNumber.toString())
   return await sha256.encode(encodedSeqNum)
-}
-
-/**
- * Get relay listen addresses using delegated routing
- * Resolves bootstrap peer IDs to actual multiaddrs dialable from the browser
- */
-async function getRelayListenAddrs (client) {
-  const peers = await Promise.all(
-    BOOTSTRAP_PEER_IDS.map((peerId) => first(client.getPeers(peerIdFromString(peerId))))
-  )
-
-  const relayListenAddrs = []
-  for (const p of peers) {
-    if (p && p.Addrs.length > 0) {
-      for (const maddr of p.Addrs) {
-        const protos = maddr.protoNames()
-        // Filter to Secure WebSockets and IP4 addresses
-        if (protos.includes('tls') && protos.includes('ws')) {
-          const nodeAddress = maddr.nodeAddress()
-          if (nodeAddress.address === '127.0.0.1') continue // skip loopback
-          const relayAddr = `${maddr.toString()}/p2p/${p.ID.toString()}/p2p-circuit`
-          relayListenAddrs.push(relayAddr)
-        }
-      }
-    }
-  }
-  return relayListenAddrs
 }
 
 /**
@@ -268,15 +238,22 @@ async function connectWithTransports (mode = 'webrtc') {
     // Create delegated routing client
     const delegatedClient = createDelegatedRoutingV1HttpApiClient('https://delegated-ipfs.dev')
 
-    // Get relay listen addresses using delegated routing
-    log('🔍 Fetching bootstrap peer addresses via delegated routing...')
-    const relayListenAddrs = await getRelayListenAddrs(delegatedClient)
-    
-    if (relayListenAddrs.length === 0) {
-      throw new Error('No relay addresses found via delegated routing')
+    // Resolve the current relays from the Aleph bootstrap channel. Universal
+    // Connectivity resolves the same profile, and that agreement is what puts
+    // both apps on one relay so they can discover each other at all.
+    log('🔍 Discovering relays via the Aleph bootstrap channel...')
+    const relayBootstrap = await resolveRelayBootstrapAddrs()
+    const relayListenAddrs = toCircuitListenAddrs(relayBootstrap.addresses)
+
+    if (relayBootstrap.error) {
+      log(`⚠️  Aleph relay discovery failed (${relayBootstrap.error.message}), falling back to the baked snapshot`)
     }
-    
-    log(`✅ Found ${relayListenAddrs.length} relay address(es) via delegated routing:`)
+
+    if (relayListenAddrs.length === 0) {
+      throw new Error('No relay addresses found via the Aleph bootstrap channel')
+    }
+
+    log(`✅ Found ${relayListenAddrs.length} relay address(es) from ${relayBootstrap.source}:`)
     relayListenAddrs.forEach((addr, i) => {
       log(`  [${i + 1}] ${addr}`)
     })
@@ -313,7 +290,8 @@ async function connectWithTransports (mode = 'webrtc') {
         listen: [
           '/webrtc',
           ...relayListenAddrs
-        ]
+        ],
+        announceFilter: (multiaddrs) => selectAnnounceAddrs(multiaddrs)
       },
       transports,
       connectionEncrypters: [noise()],
@@ -339,7 +317,11 @@ async function connectWithTransports (mode = 'webrtc') {
       services: {
         identify: identify(),
         identifyPush: identifyPush(),
-        autoNAT: autoNAT(),
+        // No AutoNAT. A browser is never publicly dialable, so there is
+        // nothing for it to verify — and it drives a random walk to find
+        // verifiers, which without the DHT spins on an empty peer set: the
+        // log fills with "walk iteration ... found 0 peers" at +0ms and the
+        // page stops responding. UC runs no AutoNAT either.
         dcutr: dcutr(),  // Enable DCUTR for automatic relay → direct WebRTC upgrades
         ping: ping(),
         pubsub: gossipsub({
@@ -348,11 +330,16 @@ async function connectWithTransports (mode = 'webrtc') {
           msgIdFn: msgIdFnStrictNoSign,
           ignoreDuplicatePublishError: true
         }),
-        delegatedRouting: () => delegatedClient,
-        dht: kadDHT({
-          protocol: '/ipfs/kad/1.0.0',  // Amino DHT protocol for UC interop
-          peerInfoMapper: removePrivateAddressesMapper
-        })
+        // No Amino DHT here. It was added for UC interop, but a browser node
+        // that joins the public DHT fans out to dozens of IPFS peers within
+        // seconds and then sits at its connection limit — autonat logs
+        // "too close to the connection limit" — so the circuit reservations
+        // never get a slot, `createLibp2p()` never resolves, and the app stays
+        // on "Connecting to UC network...". Measured with it off: 4 open
+        // connections instead of 28, startup under 10s, and the first
+        // successful connection to a UC peer. UC runs no DHT either; the two
+        // find each other over pubsub peer discovery.
+        delegatedRouting: () => delegatedClient
       }
     })
 
