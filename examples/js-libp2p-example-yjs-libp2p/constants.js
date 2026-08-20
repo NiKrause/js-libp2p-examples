@@ -49,9 +49,27 @@ export const FILE_EXCHANGE_PROTOCOL = '/universal-connectivity-file/1'
 export const DIRECT_MESSAGE_PROTOCOL = '/universal-connectivity/dm/1.0.0'
 export const PUBSUB_PEER_DISCOVERY_TOPIC = 'universal-connectivity-browser-peer-discovery'
 
-// UC Bootstrap peer ID
-export const WEBTRANSPORT_BOOTSTRAP_PEER_ID = '12D3KooWFhXabKDwALpzqMbto94sB7rvmZ6M28hs9Y9xSopDKwQr'
-export const BOOTSTRAP_PEER_IDS = [WEBTRANSPORT_BOOTSTRAP_PEER_ID]
+// Relay discovery. The old path resolved a single hard-coded UC bootstrap peer
+// ID through delegated routing; that peer is gone and the lookup now returns an
+// empty peer list, which left the node with no relay and no way to be reached.
+// Relays instead self-register on a public Aleph channel and republish every
+// 6 h, so discovery asks that channel for whatever is current.
+//
+// The profile scopes the answer: several relay implementations register in the
+// same channel, and an orbitdb-relay cannot form a shared circuit with a UC
+// browser. Universal Connectivity and this example must therefore agree on
+// `uc-go-peer` — that agreement is what lets the two meet at all.
+export const RELAY_BOOTSTRAP_PROFILE = 'uc-go-peer'
+
+// Snapshot taken from the same Aleph channel, used only when discovery itself
+// cannot be reached (offline, API down). It will go stale — every relay deploy
+// mints a new peer ID — which is why it is the fallback and not the source.
+export const RELAY_BOOTSTRAP_FALLBACK = [
+  '/dns4/they-idea-quick-soda.2n6.me/tcp/443/tls/ws/p2p/16Uiu2HAkuwNWxbdqi4QAiX5HNNVA8hmk2Ya5LAAc5KUdSNwjLH7L',
+  '/dns6/they-idea-quick-soda.2n6.me/tcp/443/tls/ws/p2p/16Uiu2HAkuwNWxbdqi4QAiX5HNNVA8hmk2Ya5LAAc5KUdSNwjLH7L',
+  '/dns4/arena-soul-sniff-cube.2n6.me/tcp/443/tls/ws/p2p/16Uiu2HAmRCbUxTCZmDwPtRM7VnmjFHYxqCeQtGWLXG7ssLRczor2',
+  '/dns6/arena-soul-sniff-cube.2n6.me/tcp/443/tls/ws/p2p/16Uiu2HAmRCbUxTCZmDwPtRM7VnmjFHYxqCeQtGWLXG7ssLRczor2'
+]
 
 export const DISCOVERY_CONFIG = {
   INTERVAL: 10000,
