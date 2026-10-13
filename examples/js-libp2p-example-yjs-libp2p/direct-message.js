@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 
 import { peerIdFromString } from '@libp2p/peer-id'
-import { pbStream } from 'it-protobuf-stream'
+import { pbStream } from '@libp2p/utils'
 import { dm } from './protobuf/direct-message.js'
 import { DEBUG } from './constants.js'
 
@@ -75,7 +75,7 @@ export class DirectMessage {
    */
   async afterStart () {
     // Register protocol handler for incoming messages
-    await this.libp2p.handle(DIRECT_MESSAGE_PROTOCOL, async ({ stream, connection }) => {
+    await this.libp2p.handle(DIRECT_MESSAGE_PROTOCOL, async (stream, connection) => {
       await this.receive(stream, connection)
     })
 

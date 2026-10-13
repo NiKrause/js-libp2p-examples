@@ -9,11 +9,11 @@ import {
   circuitRelayServer,
   circuitRelayTransport
 } from '@libp2p/circuit-relay-v2'
-import { privateKeyFromProtobuf } from '@libp2p/crypto/keys'
+import { generateKeyPair, privateKeyFromProtobuf, privateKeyToProtobuf } from '@libp2p/crypto/keys'
 import { dcutr } from '@libp2p/dcutr'
-import { gossipsub } from '@chainsafe/libp2p-gossipsub'
+import { gossipsub } from '@libp2p/gossipsub'
 import { identify, identifyPush } from '@libp2p/identify'
-import { createEd25519PeerId, createFromJSON } from '@libp2p/peer-id-factory'
+import { peerIdFromPrivateKey } from '@libp2p/peer-id'
 import { ping } from '@libp2p/ping'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { tcp } from '@libp2p/tcp'
@@ -29,27 +29,29 @@ import {
   MONITORING
 } from './relay-constants.js'
 
-// Load or generate persistent PeerId
+// Load or generate the persistent key; the file keeps the protobuf-encoded
+// private key, as @libp2p/peer-id-factory wrote it before libp2p 3.
 const PEER_ID_FILE = './relay-peer-id.json'
-let peerId
+let privateKey
 
 if (fs.existsSync(PEER_ID_FILE)) {
   const data = JSON.parse(fs.readFileSync(PEER_ID_FILE, 'utf8'))
-  peerId = await createFromJSON(data)
-  console.log('Loaded existing PeerId:', peerId.toString())
+  privateKey = privateKeyFromProtobuf(Buffer.from(data.privKey, 'base64'))
+  console.log('Loaded existing PeerId:', peerIdFromPrivateKey(privateKey).toString())
 } else {
-  peerId = await createEd25519PeerId()
+  privateKey = await generateKeyPair('Ed25519')
+  const peerId = peerIdFromPrivateKey(privateKey)
   const data = {
     id: peerId.toString(),
-    privKey: Buffer.from(peerId.privateKey).toString('base64'),
-    pubKey: Buffer.from(peerId.publicKey).toString('base64')
+    privKey: Buffer.from(privateKeyToProtobuf(privateKey)).toString('base64'),
+    pubKey: Buffer.from(privateKey.publicKey.raw).toString('base64')
   }
   fs.writeFileSync(PEER_ID_FILE, JSON.stringify(data, null, 2))
   console.log('Generated new PeerId:', peerId.toString())
 }
 
 const server = await createLibp2p({
-  privateKey: privateKeyFromProtobuf(peerId.privateKey),
+  privateKey,
   addresses: {
     listen: [
       '/ip4/0.0.0.0/tcp/9091',
@@ -96,7 +98,22 @@ const server = await createLibp2p({
     ping: ping(),
     pubsub: gossipsub({
       emitSelf: false,
-      allowPublishToZeroTopicPeers: true
+      allowPublishToZeroTopicPeers: true,
+      // Gossipsub scores peers, and by default it penalises peers that share an
+      // IP: -5 × (n − 10)² once more than ten peers were seen from one address,
+      // counting peers that disconnected up to an hour ago. Every browser in
+      // the test suite arrives from 127.0.0.1, so by the sixth two-browser test
+      // new pages scored below the gossip threshold (no longer grafted into the
+      // mesh: they only ever heard the relay's own messages, never each
+      // other's), and by the eighth below the graylist threshold (their
+      // subscriptions were ignored outright). Measured 2026-10-13: rounds 1–5
+      // found each other in ~11 s, round 6 onwards never did. The behaviour
+      // penalty (P7) punishes the connection churn of a test run the same way;
+      // orbitdb-relay zeroes both for the same reason (Le-Space/orbitdb-relay#17).
+      scoreParams: {
+        IPColocationFactorWeight: 0,
+        behaviourPenaltyWeight: 0
+      }
     }),
     relay: circuitRelayServer({
       hopTimeout: RELAY_TIMEOUTS.HOP_TIMEOUT,
@@ -119,6 +136,19 @@ if (DEBUG) {
     console.log(`Peer disconnected: ${evt.detail.toString().slice(0, 8)}...${evt.detail.toString().slice(-4)}`)
   })
 }
+
+// Diagnostics: how many pubsub messages the relay itself received, per topic
+// and sender, and how many peers came and went. Served on /api/debug.
+const messageCounts = {}
+const peerEvents = { connect: 0, disconnect: 0 }
+server.services.pubsub.addEventListener('message', (evt) => {
+  const topic = evt.detail.topic
+  const from = (evt.detail.from?.toString() ?? 'unsigned').slice(-6)
+  messageCounts[topic] ??= {}
+  messageCounts[topic][from] = (messageCounts[topic][from] ?? 0) + 1
+})
+server.addEventListener('peer:connect', () => { peerEvents.connect++ })
+server.addEventListener('peer:disconnect', () => { peerEvents.disconnect++ })
 
 // Subscribe relay to discovery topic and auto-subscribe to any topics browsers use
 const DISCOVERY_TOPIC = '_peer-discovery._p2p._pubsub'
@@ -180,6 +210,30 @@ const httpServer = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204)
     res.end()
+    return
+  }
+
+  if (req.url === '/api/debug') {
+    // What the relay thinks of its pubsub neighbourhood: who is subscribed to
+    // which topic and who is actually in the mesh. A page that is subscribed
+    // but not in the mesh only ever hears the relay's own (flood-published)
+    // messages, never the ones it forwards.
+    const pubsub = server.services.pubsub
+    const topics = {}
+    for (const topic of pubsub.getTopics()) {
+      topics[topic] = {
+        subscribers: pubsub.getSubscribers(topic).map(p => p.toString().slice(-6)),
+        mesh: Array.from(pubsub.mesh?.get(topic) ?? []).map(p => p.slice(-6))
+      }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({
+      connections: server.getConnections().map(c => ({ peer: c.remotePeer.toString().slice(-6), status: c.status, addr: c.remoteAddr.toString().slice(0, 40) })),
+      pubsubPeers: Array.from(pubsub.peers?.keys?.() ?? []).map(p => ({ id: p.slice(-6), score: pubsub.score?.score(p) })),
+      peerEvents,
+      messageCounts,
+      topics
+    }, null, 2))
     return
   }
 

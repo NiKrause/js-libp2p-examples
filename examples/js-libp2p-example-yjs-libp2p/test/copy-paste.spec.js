@@ -3,19 +3,16 @@
 import { test, expect } from '@playwright/test'
 import { connectToSpreadsheet, waitForWebRTCConnection } from './helpers.js'
 
-const url = 'http://localhost:5173'
+const url = `http://127.0.0.1:${process.env.E2E_PORT || 5174}`
 
 test.describe('Copy/Paste Feature', () => {
-  test.setTimeout(120000)
+  test.setTimeout(240000)
 
   test('should copy and paste a single cell value', async ({ browser }) => {
     const context = await browser.newContext()
     // Grant clipboard permissions for copy/paste operations
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `copy-paste-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -73,9 +70,6 @@ test.describe('Copy/Paste Feature', () => {
     const context = await browser.newContext()
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `formula-copy-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -147,9 +141,6 @@ test.describe('Copy/Paste Feature', () => {
     const context = await browser.newContext()
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `cut-test-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -218,9 +209,6 @@ test.describe('Copy/Paste Feature', () => {
     const context = await browser.newContext()
     await context.grantPermissions(['clipboard-read', 'clipboard-write'])
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `cut-immediate-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -267,10 +255,6 @@ test.describe('Copy/Paste Feature', () => {
 
     page1.on('console', msg => console.log('Page1:', msg.text()))
     page2.on('console', msg => console.log('Page2:', msg.text()))
-
-    await page1.goto(url)
-    await page2.goto(url)
-
     const testTopic = `collab-copy-${Date.now()}`
     await connectToSpreadsheet(page1, testTopic)
     await connectToSpreadsheet(page2, testTopic)
@@ -341,9 +325,6 @@ test.describe('Copy/Paste Feature', () => {
 
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `external-paste-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 

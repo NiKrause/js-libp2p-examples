@@ -4,7 +4,7 @@ import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
 import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
 import { dcutr } from '@libp2p/dcutr'
-import { gossipsub } from '@chainsafe/libp2p-gossipsub'
+import { gossipsub } from '@libp2p/gossipsub'
 import { identify, identifyPush } from '@libp2p/identify'
 import { ping } from '@libp2p/ping'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
@@ -15,7 +15,7 @@ import * as Y from 'yjs'
 import { DEBUG, TIMEOUTS, INTERVALS, UC_CHAT_TOPIC, UC_FILE_TOPIC, DISCOVERY_CONFIG, PUBSUB_PEER_DISCOVERY_TOPIC } from './constants.js'
 import { resolveRelayBootstrapAddrs, selectAnnounceAddrs, toCircuitListenAddrs } from './aleph-bootstrap.js'
 import { sha256 } from 'multiformats/hashes/sha2'
-import { createDelegatedRoutingV1HttpApiClient } from '@helia/delegated-routing-v1-http-api-client'
+import { delegatedRoutingV1HttpApiClient } from '@helia/delegated-routing-v1-http-api-client'
 import {
   getTransportType,
   updatePeerDisplay,
@@ -26,9 +26,10 @@ import {
   SpreadsheetUI
 } from './spreadsheet-engine.js'
 import { Libp2pProvider } from './yjs-libp2p-provider.js'
-import { UCExtensionService } from './uc-extension-service.js'
+import { createConsumer } from '@le-space/ucep'
+import { createSheetExtension } from './sheet-extension.js'
+import { startSnapshots } from './snapshots.js'
 import { DirectMessage } from './direct-message.js'
-import { ExtensionTestClient, testExtension } from './extension-test-client.js'
 
 // UI elements (network and logging related)
 const topicInput = document.getElementById('topic')
@@ -51,9 +52,10 @@ let yjsDoc
 let provider
 let spreadsheetEngine
 let spreadsheetUI
-let ucExtensionService
+let sheetExtension
+let snapshots
+let ucepConsumer
 let directMessageService
-let extensionTestClient
 
 // Track peer connection transports to detect upgrades
 const peerTransports = new Map() // peerId -> Set of transport types
@@ -235,15 +237,24 @@ async function connectWithTransports (mode = 'webrtc') {
     // Show connection mode
     connectionModeEl.textContent = '🔄 Connecting to UC network...'
 
-    // Create delegated routing client
-    const delegatedClient = createDelegatedRoutingV1HttpApiClient('https://delegated-ipfs.dev')
-
     // Resolve the current relays from the Aleph bootstrap channel. Universal
     // Connectivity resolves the same profile, and that agreement is what puts
     // both apps on one relay so they can discover each other at all.
-    log('🔍 Discovering relays via the Aleph bootstrap channel...')
-    const relayBootstrap = await resolveRelayBootstrapAddrs()
-    const relayListenAddrs = toCircuitListenAddrs(relayBootstrap.addresses)
+    // `?relay=<multiaddr>` names a relay outright — the tests' local one — and
+    // skips the Aleph lookup, so a suite never depends on a public relay.
+    const relayOverride = new URLSearchParams(window.location.search).get('relay')
+    let relayBootstrap
+    let relayListenAddrs
+    if (relayOverride) {
+      log(`🔧 Relay from the URL: ${relayOverride}`)
+      relayBootstrap = { addresses: [relayOverride], source: 'url', error: null }
+      // Taken as given: the public-address filter would drop a relay on 127.0.0.1.
+      relayListenAddrs = [`${relayOverride}/p2p-circuit`]
+    } else {
+      log('🔍 Discovering relays via the Aleph bootstrap channel...')
+      relayBootstrap = await resolveRelayBootstrapAddrs()
+      relayListenAddrs = toCircuitListenAddrs(relayBootstrap.addresses)
+    }
 
     if (relayBootstrap.error) {
       log(`⚠️  Aleph relay discovery failed (${relayBootstrap.error.message}), falling back to the baked snapshot`)
@@ -339,7 +350,8 @@ async function connectWithTransports (mode = 'webrtc') {
         // connections instead of 28, startup under 10s, and the first
         // successful connection to a UC peer. UC runs no DHT either; the two
         // find each other over pubsub peer discovery.
-        delegatedRouting: () => delegatedClient
+        // Since v9 the client is a libp2p service of its own.
+        delegatedRouting: delegatedRoutingV1HttpApiClient({ url: 'https://delegated-ipfs.dev' })
       }
     })
 
@@ -369,15 +381,14 @@ async function connectWithTransports (mode = 'webrtc') {
     spreadsheetUI = new SpreadsheetUI(spreadsheetEngine)
     spreadsheetUI.initialize()
 
-    // Initialize UC Extension Service
-    ucExtensionService = new UCExtensionService({
-      libp2p: libp2pNode,
-      spreadsheetEngine,
-      topic
-    })
-    await ucExtensionService.start()
-    await ucExtensionService.afterStart()
-    log('📦 UC Extension: Service initialized')
+    // Snapshots: a Helia node on this libp2p node, the sheet's state as blocks by CID.
+    snapshots = await startSnapshots({ libp2p: libp2pNode, doc: yjsDoc, engine: spreadsheetEngine, topic })
+    log('📸 Snapshots: Helia started on this node')
+
+    // The sheet as a UCEP extension (reference library, wire revision 2).
+    sheetExtension = createSheetExtension({ libp2p: libp2pNode, engine: spreadsheetEngine, snapshots, topic })
+    await sheetExtension.start()
+    log(`📦 UCEP: serving ${sheetExtension.protocol}`)
 
     // Initialize Direct Message Service
     directMessageService = new DirectMessage({ libp2p: libp2pNode })
@@ -385,18 +396,64 @@ async function connectWithTransports (mode = 'webrtc') {
     await directMessageService.afterStart()
     log('🔐 Direct Message: Service initialized')
 
-    // Initialize Extension Test Client (for testing in same tab)
-    extensionTestClient = new ExtensionTestClient(libp2pNode)
-    await extensionTestClient.start()
-    log('🔍 Extension Test Client: Started')
+    // A consumer on the same node: what another app sees of us, for the
+    // console and the tests — and for calling other sheets.
+    ucepConsumer = createConsumer({ libp2p: libp2pNode, label: 'Spreadsheet' })
+    await ucepConsumer.start()
+    log('🔍 UCEP consumer: started')
 
-    // Expose for testing
+    // The snapshot button and the list under the toolbar.
+    const snapshotBtn = document.getElementById('snapshot-btn')
+    const snapshotList = document.getElementById('snapshot-list')
+    const renderSnapshots = () => {
+      const entries = snapshots.entries()
+      snapshotList.replaceChildren(
+        ...entries.map((e) => {
+          const li = document.createElement('li')
+          li.className = 'snapshot'
+          li.dataset.cid = e.cid
+          const when = new Date(e.at).toLocaleTimeString()
+          li.innerHTML = `<code class="snapshot-cid" title="${e.cid}">${e.cid.slice(0, 10)}…${e.cid.slice(-6)}</code>` +
+            ` <span class="snapshot-meta">${when} · ${e.cells} cells · ${e.bytes} B</span>` +
+            ` <button class="snapshot-restore" title="Put the sheet back to this snapshot">↩ Restore</button>`
+          li.querySelector('.snapshot-restore').onclick = async () => {
+            try {
+              const r = await snapshots.restore(e.cid)
+              log(`↩ Restored ${e.cid.slice(0, 10)}… (${r.cells} cells)`)
+            } catch (err) {
+              log(`❌ Restore failed: ${err.message}`, true)
+            }
+          }
+          return li
+        })
+      )
+      snapshotList.style.display = entries.length ? '' : 'none'
+    }
+    snapshotBtn.disabled = false
+    snapshotBtn.onclick = async () => {
+      try {
+        const e = await snapshots.take()
+        log(`📸 Snapshot ${e.cid} (${e.cells} cells, ${e.bytes} B)`)
+      } catch (err) {
+        log(`❌ Snapshot failed: ${err.message}`, true)
+      }
+    }
+    snapshots.onChange(renderSnapshots)
+    renderSnapshots()
+
+    // Expose for testing and the console
     window.spreadsheetUI = spreadsheetUI
-    window.ucExtensionService = ucExtensionService
+    window.sheet = { engine: spreadsheetEngine, doc: yjsDoc, snapshots, extension: sheetExtension, consumer: ucepConsumer }
     window.directMessageService = directMessageService
-    window.extensionTestClient = extensionTestClient
-    window.testExtension = testExtension
-    window.listExtensions = () => extensionTestClient.listExtensions()
+    /**
+     * Call a sheet command on a peer, as another app would:
+     *   testExtension('<peerId>', 'show', { topic: 'spreadsheet-1', cell: 'A1' })
+     */
+    window.testExtension = async (peerId, command, argsJson = {}) => {
+      await ucepConsumer.addProvider(peerId).catch(() => {})
+      return ucepConsumer.call(peerId, 'sheet', command, argsJson)
+    }
+    window.listExtensions = () => ucepConsumer.catalogue()
 
     log('Ready! Open this page in another tab to collaborate.')
     log('UC Extension: Spreadsheet is now available as UC extension')
@@ -1019,6 +1076,10 @@ window.setupCSVControls = setupCSVControls
 // Auto-connect on page load with WebRTC mode (default)
 // Small delay to allow topic to be set programmatically for tests
 setTimeout(() => {
+  // `?topic=` names the sheet before the auto-connect, so a test (or a link)
+  // never races the 100 ms against typing into the field.
+  const topicFromUrl = new URLSearchParams(window.location.search).get('topic')
+  if (topicFromUrl) topicInput.value = topicFromUrl
   if (!libp2pNode) {
     connectWithTransports('webrtc')
   }

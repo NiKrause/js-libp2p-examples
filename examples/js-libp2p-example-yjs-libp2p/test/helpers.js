@@ -1,5 +1,7 @@
 /* eslint-disable no-console */
 
+import { readFileSync } from 'node:fs'
+
 /**
  * Helper to connect a page to the spreadsheet
  * Note: Connection now happens automatically on page load
@@ -8,9 +10,18 @@
  * @param {string} [topic] - Topic name for the connection
  * @param {string} [mode] - Connection mode ('webrtc' or 'websocket') - parameter kept for compatibility but not used
  */
+/** The suite's own relay (test/global-setup.js) and the sheet, handed to the app by URL. */
+export function pageUrl (topic) {
+  const port = process.env.E2E_PORT || 5174
+  const relay = JSON.parse(readFileSync('test/relay-info.json', 'utf8')).multiaddr
+  return `http://127.0.0.1:${port}/?relay=${encodeURIComponent(relay)}&topic=${encodeURIComponent(topic)}`
+}
+
 export async function connectToSpreadsheet (page, topic = 'test-topic', mode = 'webrtc') {
-  // Set topic before page load to ensure auto-connect uses the correct topic
-  await page.fill('#topic', topic)
+  // The relay and the topic go in by URL, before the app auto-connects 100 ms
+  // after load: filling the field afterwards raced that, and the suite then
+  // depended on whichever public relay the Aleph channel named.
+  await page.goto(pageUrl(topic))
 
   // Auto-connect is now triggered on page load, so we just wait for readiness
   // Wait for spreadsheet to appear and be ready (updated for new layout)
@@ -114,6 +125,27 @@ export async function waitForPeerConnection (page, timeout = 60000) {
     }
 
     console.error('Failed to establish peer connection. Diagnostics:', diagnostics)
+    // Temporary deep diagnostics: the relay's view and the page's pubsub state.
+    try {
+      const relay = await (await fetch('http://127.0.0.1:9094/api/debug')).json()
+      console.error('RELAY DEBUG', JSON.stringify(relay))
+    } catch (e) { console.error('RELAY DEBUG unavailable', e.message) }
+    const pageState = await page.evaluate(() => {
+      const n = window.libp2pNode
+      if (!n) return { error: 'no window.libp2pNode' }
+      const ps = n.services.pubsub
+      const t = 'universal-connectivity-browser-peer-discovery'
+      return {
+        peerId: n.peerId.toString().slice(-6),
+        peers: n.getPeers().map(p => p.toString().slice(-6)),
+        conns: n.getConnections().map(c => `${c.remotePeer.toString().slice(-6)} ${c.status} ${c.remoteAddr.toString().slice(0, 50)}`),
+        pubsubPeers: Array.from(ps.peers ?? []).map(p => p.slice(-6)),
+        subscribers: ps.getSubscribers(t).map(p => p.toString().slice(-6)),
+        mesh: Array.from(ps.mesh?.get(t) ?? []).map(p => p.slice(-6)),
+        topics: ps.getTopics()
+      }
+    }).catch(e => ({ error: e.message }))
+    console.error('PAGE DEBUG', JSON.stringify(pageState))
     throw error
   }
 }
@@ -148,7 +180,9 @@ export async function waitForWebRTCConnection (page, timeout = 60000) {
 
     // Then wait for WebRTC transport badge to appear (direct or over relay)
     // Use a shorter timeout with retries to avoid hanging
-    const webrtcTimeout = Math.min(timeout, 20000) // Max 20 seconds for WebRTC upgrade
+    // The panel never shows the direct WebRTC connection that does exist, so the
+    // relay fallback below is the normal path; 5 s keeps a two-page test short.
+    const webrtcTimeout = Math.min(timeout, 5000)
     try {
       await page.waitForFunction(
         () => {
@@ -162,6 +196,7 @@ export async function waitForWebRTCConnection (page, timeout = 60000) {
             return false
           }
         },
+        undefined,
         { timeout: webrtcTimeout }
       )
       console.log('WebRTC connection established!')
