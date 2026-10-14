@@ -1,10 +1,22 @@
 {
-  "extends": "aegir/src/config/tsconfig.aegir.json",
+  // Self-contained on purpose: the example's CI job installs only this
+  // package, so an `extends` pointing at the monorepo's aegir would break
+  // `vite build` there. These are aegir's own options, written out, limited to
+  // the generated protobuf code so the monorepo's lint can type-check it.
   "compilerOptions": {
-    "outDir": "dist",
-    "noEmit": true
+    "strict": true,
+    "noEmit": true,
+    "allowJs": false,
+    "target": "ES2024",
+    "module": "Node18",
+    "moduleResolution": "Node16",
+    "lib": ["DOM", "DOM.Iterable", "DOM.AsyncIterable", "ES2024"],
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "verbatimModuleSyntax": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
   },
-  "include": [
-    "protobuf"
-  ]
+  "include": ["protobuf"]
 }
