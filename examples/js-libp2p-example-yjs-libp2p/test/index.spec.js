@@ -6,20 +6,19 @@ import {
   waitForWebRTCConnection
 } from './helpers.js'
 
-const url = 'http://localhost:5173'
+const url = `http://127.0.0.1:${process.env.E2E_PORT || 5174}`
 
 test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
-  test.setTimeout(120000) // Increase timeout for all tests to 2 minutes
+  // Two browsers find each other over the relay in ~25 s each; 2 minutes was tight.
+  test.setTimeout(240000)
   test('should load spreadsheet page in two browsers', async ({ browser }) => {
     const context1 = await browser.newContext()
     const context2 = await browser.newContext()
 
     const page1 = await context1.newPage()
     const page2 = await context2.newPage()
-
     await page1.goto(url)
     await page2.goto(url)
-
     const heading1 = await page1.locator('h1').textContent()
     const heading2 = await page2.locator('h1').textContent()
 
@@ -40,10 +39,6 @@ test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
     // Enable console logging for debugging
     page1.on('console', msg => console.log('Page1:', msg.text()))
     page2.on('console', msg => console.log('Page2:', msg.text()))
-
-    await page1.goto(url)
-    await page2.goto(url)
-
     // Connect both pages with the same topic
     const testTopic = `test-${Date.now()}`
     await connectToSpreadsheet(page1, testTopic)
@@ -107,10 +102,6 @@ test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
 
     const page1 = await context1.newPage()
     const page2 = await context2.newPage()
-
-    await page1.goto(url)
-    await page2.goto(url)
-
     const testTopic = `formula-test-${Date.now()}`
     await connectToSpreadsheet(page1, testTopic)
     await connectToSpreadsheet(page2, testTopic)
@@ -214,10 +205,6 @@ test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
     // Enable console logging for debugging
     page1.on('console', msg => console.log('Page1:', msg.text()))
     page2.on('console', msg => console.log('Page2:', msg.text()))
-
-    await page1.goto(url)
-    await page2.goto(url)
-
     const testTopic = `recalc-test-${Date.now()}`
     await connectToSpreadsheet(page1, testTopic)
     await connectToSpreadsheet(page2, testTopic)
@@ -444,9 +431,6 @@ test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
   test('should recalculate formulas when values change (single browser)', async ({ browser }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `single-recalc-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -557,9 +541,6 @@ test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
   test('should preserve formulas when focusing cells', async ({ browser }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `formula-preserve-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -624,7 +605,8 @@ test.describe('Collaborative Spreadsheet - WebRTC-Direct Bootstrap', () => {
 })
 
 test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
-  test.setTimeout(120000) // Increase timeout for all tests to 2 minutes
+  // Two browsers find each other over the relay in ~25 s each; 2 minutes was tight.
+  test.setTimeout(240000)
 
   // Skip WebSocket Bootstrap tests on WebKit due to known limitation:
   // WebKit's WebRTC DataChannel gets stuck in "connecting" state when upgrading
@@ -651,10 +633,6 @@ test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
     // Enable console logging for debugging
     page1.on('console', msg => console.log('Page1:', msg.text()))
     page2.on('console', msg => console.log('Page2:', msg.text()))
-
-    await page1.goto(url)
-    await page2.goto(url)
-
     // Connect both pages with WebSocket-only mode
     const testTopic = `ws-test-${Date.now()}`
     await connectToSpreadsheet(page1, testTopic, 'websocket')
@@ -728,10 +706,6 @@ test.describe('Collaborative Spreadsheet - WebSocket Bootstrap', () => {
 
     const page1 = await context1.newPage()
     const page2 = await context2.newPage()
-
-    await page1.goto(url)
-    await page2.goto(url)
-
     const testTopic = `ws-formula-test-${Date.now()}`
     await connectToSpreadsheet(page1, testTopic, 'websocket')
     await connectToSpreadsheet(page2, testTopic, 'websocket')
@@ -857,9 +831,6 @@ test.describe.skip('Collaborative Spreadsheet - Late Joiner', () => {
 
     // Enable console logging for debugging
     page1.on('console', msg => console.log('Page1:', msg.text()))
-
-    await page1.goto(url)
-
     const testTopic = `late-join-test-${Date.now()}`
     await connectToSpreadsheet(page1, testTopic, 'webrtc')
 
@@ -898,8 +869,6 @@ test.describe.skip('Collaborative Spreadsheet - Late Joiner', () => {
     const page2 = await context2.newPage()
 
     page2.on('console', msg => console.log('Page2:', msg.text()))
-
-    await page2.goto(url)
     await connectToSpreadsheet(page2, testTopic, 'webrtc')
 
     await page2.waitForFunction(

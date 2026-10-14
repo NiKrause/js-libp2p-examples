@@ -1,325 +1,42 @@
-# UC Extension Protocol (UCEP)
+# UCEP in this example
 
-## Overview
+The spreadsheet serves itself to other libp2p applications over the **Universal Connectivity Extension Protocol**. The protocol is specified in [Le-Space/ucep-spec](https://github.com/Le-Space/ucep-spec) (Working Draft, wire revision 2) and implemented by the reference library [`@le-space/ucep`](https://github.com/Le-Space/ucep-js); this example uses that library on both sides — the sheet as a *provider*, and a *consumer* on the same node for the console and the tests. Nothing about the wire format lives in this repository any more.
 
-The **Universal Connectivity Extension Protocol (UCEP)** is a decentralized plugin system for libp2p applications. It enables peers to discover and interact with extensions (plugins/services) provided by other peers in a fully peer-to-peer manner, without any central registry or server.
+In one paragraph: a provider registers `/uc/extension/{id}/{version}` as a libp2p protocol, so every peer learns it exists through identify — no registry, no server. A consumer asks for the manifest (always public), then calls commands by name with positional arguments (a 0.1 consumer such as the UC chat sends `/sheet-show <topic> <cell>`) or a JSON object (`{ topic, cell }`). Commands that change something carry a *scope*; a consumer pairs for it — by invitation (a link or QR code with a one-time secret) or in band (the same six-digit code on both screens) — and holds a *grant* the provider checks on every call.
 
-## Protocol Design
+## The extension `sheet`
 
-### Discovery via Identify Protocol
+Protocol `/uc/extension/sheet/1.1.0` · manifest in [`extension-manifest.json`](./extension-manifest.json) · code in [`sheet-extension.js`](./sheet-extension.js).
 
-Extensions are discovered automatically through libp2p's **identify protocol**:
+| command | syntax | scope | what it does |
+| --- | --- | --- | --- |
+| `help` | `/sheet-help` | public | the commands, and where the sheet lives |
+| `show` | `/sheet-show <topic> <cell>` | public | the value, formula and error state of a cell |
+| `write` | `/sheet-write <topic> <cell>=<value>` | public | write a value or a formula |
+| `list` | `/sheet-list` | public | the sheets this peer has been on |
+| `snapshot` | `/sheet-snapshot <topic>` | public | freeze the sheet: its state becomes a block, addressed by its CID |
+| `snapshots` | `/sheet-snapshots <topic>` | public | the snapshots taken, newest first — CID, size, SHA-256, when, by whom |
+| `restore` | `/sheet-restore <topic> <cid>` | `sheet:cells:write` | fetch a snapshot by CID — verified — and put the sheet back to it |
 
-1. When peers connect, they exchange protocol information via identify
-2. Each extension registers a protocol: `/uc/extension/{extensionId}/{version}`
-3. Peers detect extension protocols and fetch manifests to learn capabilities
-4. No central registry needed - discovery happens through peer connections
+A peer serves the one sheet it is on; a command that names another topic is answered `UNAVAILABLE`. Bad arguments are `INVALID_ARGUMENTS`; `restore` without a grant is `PAIRING_REQUIRED`. `write` stays public so that a 0.1 consumer, which cannot pair, keeps working; the day the UC chat speaks revision 2, it moves behind the same scope.
 
-### Communication via Direct Streams
+## Snapshots: the sheet as content-addressed blocks
 
-Extension communication uses **pbStream** (protobuf streams) over direct libp2p connections:
+Yjs is the living document: every browser holds a copy, edits merge, there is only ever "now". A **snapshot** is the document's state as one block of bytes, and the block's hash as its address — a CID. The blocks live in a Helia node on top of the sheet's libp2p node ([`snapshots.js`](./snapshots.js)); a peer that does not hold a block fetches it over Bitswap, on the connection it already has, and Helia checks it against the CID before handing it out. The list of snapshots is part of the Yjs document, so it replicates with the sheet; the blocks do not — they travel on request.
 
-- **Manifest Requests**: Fetch extension metadata (name, description, commands)
-- **Command Requests**: Execute extension commands with request-response pattern
-- Same pattern as Direct Message protocol - reliable, typed, bidirectional
+A CRDT cannot be rewound, so `restore` does not apply the old update (that would change nothing); it reads the snapshot in a scratch document and writes its cells back as new edits, in one transaction, which every peer receives like any other change.
 
-### Protocol Format
+## Trying it
 
-```
-/uc/extension/{extensionId}/{version}
+In the browser console of a sheet:
 
-Examples:
-/uc/extension/sheet/1.0.0       - Collaborative Spreadsheet
-/uc/extension/calculator/1.0.0  - Shared Calculator
-/uc/extension/chat-bot/2.1.0    - AI Chat Bot
-```
-
-## Architecture
-
-### Extension Provider
-
-The peer that provides an extension:
-
-```javascript
-class UCExtensionService {
-  async start() {
-    // Register topology for peer tracking
-    this.topologyId = await this.libp2p.register(EXTENSION_PROTOCOL, {
-      onConnect: (peerId) => { /* track peer */ },
-      onDisconnect: (peerId) => { /* cleanup */ }
-    })
-  }
-
-  async afterStart() {
-    // Handle incoming requests via pbStream
-    await this.libp2p.handle(EXTENSION_PROTOCOL, async ({ stream, connection }) => {
-      const datastream = pbStream(stream)
-      const request = await datastream.read(ext.Request, { signal })
-      
-      if (request.manifest) {
-        // Return extension manifest
-        const response = createManifestResponse()
-        await datastream.write(response, ext.Response, { signal })
-      } else if (request.command) {
-        // Execute command and return result
-        const response = await executeCommand(request.command)
-        await datastream.write(response, ext.Response, { signal })
-      }
-    })
-  }
-}
+```js
+await window.testExtension('<peerId of another sheet>', 'show', { topic: 'spreadsheet-1', cell: 'A1' })
+await window.testExtension('<peerId>', 'snapshot', { topic: 'spreadsheet-1' })
+window.listExtensions()        // the consumer's catalogue
+window.sheet.snapshots.entries()
 ```
 
-### Extension Consumer (Discovery & consumption side)
+To restore on another peer's sheet, pair first: the provider hands out an invitation (`window.sheet.extension.provider.createInvitation({ scopes: ['sheet:cells:write'] })`), the consumer takes it (`window.sheet.consumer.pairWithInvitation(uri)`), then `restore` is allowed.
 
-The peer that uses extensions:
-
-```javascript
-class ExtensionManager {
-  async start() {
-    // Listen for peer identification
-    this.libp2p.addEventListener('peer:identify', (evt) => {
-      const { peerId, protocols } = evt.detail
-      
-      // Look for extension protocols
-      for (const protocol of protocols) {
-        if (protocol.startsWith('/uc/extension/')) {
-          // Discovered an extension!
-          this.fetchManifest(peerId, protocol)
-        }
-      }
-    })
-  }
-
-  async fetchManifest(peerId, protocol) {
-    const stream = await this.libp2p.dialProtocol(peerId, protocol)
-    const datastream = pbStream(stream)
-    
-    const request = { manifest: { timestamp: BigInt(Date.now()) } }
-    await datastream.write(request, ext.Request, { signal })
-    
-    const response = await datastream.read(ext.Response, { signal })
-    // Store manifest, show in UI
-  }
-
-  async executeCommand(extensionId, command, args) {
-    const extension = this.installedExtensions.get(extensionId)
-    const stream = await this.libp2p.dialProtocol(extension.peerId, extension.protocol)
-    const datastream = pbStream(stream)
-    
-    const request = {
-      command: { requestId: uuid(), extensionId, command, args, timestamp }
-    }
-    await datastream.write(request, ext.Request, { signal })
-    
-    const response = await datastream.read(ext.Response, { signal })
-    return response.command
-  }
-}
-```
-
-## Message Format (Protobuf)
-
-### Request
-
-```protobuf
-message Request {
-  oneof payload {
-    ManifestRequest manifest = 1;
-    CommandRequest command = 2;
-  }
-}
-
-message ManifestRequest {
-  int64 timestamp = 1;
-}
-
-message CommandRequest {
-  string requestId = 1;
-  string extensionId = 2;
-  string command = 3;
-  repeated string args = 4;
-  int64 timestamp = 5;
-}
-```
-
-### Response
-
-```protobuf
-message Response {
-  oneof payload {
-    ManifestResponse manifest = 1;
-    CommandResponse command = 2;
-  }
-}
-
-message ManifestResponse {
-  ExtensionManifest manifest = 1;
-  int64 timestamp = 2;
-}
-
-message CommandResponse {
-  string requestId = 1;
-  bool success = 2;
-  optional string data = 3;       // JSON-encoded data
-  optional string error = 4;
-  int64 timestamp = 5;
-}
-```
-
-### Extension Manifest
-
-```protobuf
-message ExtensionManifest {
-  string id = 1;
-  string name = 2;
-  string version = 3;
-  string description = 4;
-  string author = 5;
-  string publicUrl = 6;           // URL to extension UI
-  repeated ExtensionCommand commands = 7;
-  string icon = 8;                // Icon URL or data URI
-}
-
-message ExtensionCommand {
-  string name = 1;
-  string syntax = 2;
-  string description = 3;
-}
-```
-
-## This Example: Collaborative Spreadsheet Extension
-
-This example implements a **Yjs-based collaborative spreadsheet** as a UC extension:
-
-### Features
-
-- Real-time collaborative editing using Yjs CRDT
-- Peer-to-peer sync via libp2p pubsub
-- Discoverable as UC extension via UCEP
-- Command interface for remote access:
-  - `/sheet-help` - Show available commands
-  - `/sheet-show <topic> <cell>` - Read cell value
-  - `/sheet-write <topic> <cell>=<value>` - Write cell value
-  - `/sheet-list` - List active spreadsheet topics
-
-### Extension Manifest
-
-```json
-{
-  "id": "sheet",
-  "name": "Collaborative Spreadsheet",
-  "version": "1.0.0",
-  "description": "Real-time collaborative spreadsheet with formulas",
-  "author": "libp2p Examples",
-  "publicUrl": "https://your-spreadsheet-url.com",
-  "icon": "📊",
-  "commands": [
-    { "name": "help", "syntax": "/sheet-help", "description": "..." },
-    { "name": "show", "syntax": "/sheet-show <topic> <cell>", "description": "..." },
-    { "name": "write", "syntax": "/sheet-write <topic> <cell>=<value>", "description": "..." },
-    { "name": "list", "syntax": "/sheet-list", "description": "..." }
-  ]
-}
-```
-
-## Universal Connectivity Implementation
-
-The [Universal Connectivity project](https://github.com/NiKrause/universal-connectivity) implements the full UCEP client side:
-
-### Client Components
-
-1. **ExtensionManager** (`js-peer/src/lib/extension-manager.ts`)
-   - Discovers extensions via identify protocol
-   - Fetches and stores manifests
-   - Manages installed extensions in localStorage
-   - Tracks available peers per extension
-
-2. **ExtensionProtocol** (`js-peer/src/lib/extension-protocol.ts`)
-   - Executes commands on remote extensions
-   - Handles peer selection (tries multiple peers)
-   - Marks successful peers for prioritization
-
-3. **UI Integration** (`js-peer/src/context/extension-ctx.tsx`)
-   - Shows available extensions
-   - Install/uninstall UI
-   - Command execution from chat interface
-   - Parses commands like `/sheet-show hackathon A1`
-
-### Chat Integration
-
-In UC chat, users can:
-1. See discovered extensions in the Extensions panel
-2. Click "Install" to enable an extension
-3. Use commands directly in chat: `/extensionId-command args`
-4. See results displayed in chat
-
-### Example Flow
-
-```
-User in UC Chat                  Spreadsheet Extension
-     |                                   |
-     | (connects to network)             |
-     |<----------- identify ------------>|
-     |    protocols: [/uc/extension/sheet/1.0.0]
-     |                                   |
-     | --- fetch manifest request -->   |
-     |<-- manifest response -----------  |
-     |                                   |
-     | (user installs extension)         |
-     | (user types: /sheet-show demo A1) |
-     |                                   |
-     | --- command request ----------->  |
-     |     { command: "show",            |
-     |       args: ["demo", "A1"] }      |
-     |                                   |
-     |<-- command response -------------  |
-     |     { success: true,              |
-     |       data: { value: 42 } }       |
-     |                                   |
-     | (displays: Cell A1 = 42)          |
-```
-
-## Key Benefits
-
-1. **Fully Decentralized**: No central registry, discovery via peer connections
-2. **Language Agnostic**: Any language with libp2p can implement UCEP
-3. **Type Safe**: Protobuf ensures consistent message format
-4. **Secure**: Uses libp2p's encryption and authentication
-5. **Extensible**: New extensions can be added without protocol changes
-6. **Real-time**: Direct peer-to-peer communication
-7. **Resilient**: Multiple peers can provide same extension
-
-## Comparison with Direct Message Protocol
-
-Both UCEP and Direct Messages use the same libp2p patterns:
-
-| Feature | Direct Messages | Extensions |
-|---------|----------------|------------|
-| Discovery | Topology tracking | Identify protocol |
-| Protocol | `/universal-connectivity/dm/1.0.0` | `/uc/extension/{id}/{version}` |
-| Transport | pbStream | pbStream |
-| Pattern | Request-Response | Request-Response |
-| Message Type | Text content | Commands + JSON data |
-| Use Case | Private chat | Remote procedure calls |
-
-Both follow UC v2.x service pattern:
-- `start()` - Register topology
-- `afterStart()` - Register handler
-- `stop()` - Cleanup
-- Handler receives `{ stream, connection }`
-- Uses `pbStream` for typed communication
-
-## Testing
-
-This example includes a test client for development:
-
-```javascript
-// Open browser console
-window.listExtensions()  // Show discovered extensions
-window.testExtension('sheet', 'help')  // Test help command
-window.testExtension('sheet', 'show', ['demo', 'A1'])  // Test show
-window.testExtension('sheet', 'write', ['demo', 'B1=100'])  // Test write
-```
-
-Or connect to the actual UC chat app to test the full integration!
+The end-to-end test [`test/snapshot.spec.js`](./test/snapshot.spec.js) runs exactly this between two browsers: write, snapshot, list over UCEP, fetch over Bitswap and verify, refused restore, pairing, restore — on the suite's own relay, with no public relay involved (`?relay=` and `?topic=` in the URL name both before the app connects).

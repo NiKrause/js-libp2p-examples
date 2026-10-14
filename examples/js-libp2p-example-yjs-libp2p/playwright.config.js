@@ -1,5 +1,10 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// A port of this suite's own, and never a server it did not start: 5173 is
+// what every Vite app on the machine listens on, and a suite once tested a
+// different app's dev server that happened to be up there.
+export const port = Number(process.env.E2E_PORT || 5174)
+
 export default defineConfig({
   testDir: './test',
   timeout: 120000, // Increased timeout for CI environments
@@ -10,8 +15,17 @@ export default defineConfig({
   reporter: 'list',
   globalSetup: './test/global-setup.js',
   globalTeardown: './test/global-teardown.js',
+  // The dev server, started by the suite rather than by hand.
+  webServer: {
+    // Bound to 127.0.0.1: Vite's default binds [::1] only, which Chromium's
+    // `localhost` does not reach.
+    command: `npx vite --host 127.0.0.1 --port ${port} --strictPort`,
+    port,
+    reuseExistingServer: false,
+    timeout: 120_000
+  },
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: `http://127.0.0.1:${port}`,
     trace: 'on-first-retry'
   },
   projects: [
@@ -79,11 +93,5 @@ export default defineConfig({
     //     permissions: ['clipboard-read', 'clipboard-write']
     //   }
     // }
-  ],
-  webServer: {
-    command: 'npx vite preview --port 5173',
-    port: 5173,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000
-  }
+  ]
 })

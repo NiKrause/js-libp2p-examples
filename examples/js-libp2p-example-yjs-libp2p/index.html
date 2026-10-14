@@ -542,7 +542,13 @@
             <button disabled title="Undo (Ctrl+Z)">↶ Undo</button>
             <button disabled title="Redo (Ctrl+Y)">↷ Redo</button>
           </div>
+          <div class="toolbar-group">
+            <button id="snapshot-btn" disabled title="Freeze the sheet as it is: its state becomes a block on IPFS, addressed by its CID">📸 Snapshot</button>
+          </div>
         </div>
+        <!-- The snapshots taken on this sheet, newest first: replicated with the
+             sheet, the blocks fetched over Bitswap when a peer restores one. -->
+        <ul id="snapshot-list" class="snapshot-list" style="display: none"></ul>
 
         <!-- CSV Paste Area -->
         <div id="csv-paste-area" class="csv-paste-area">

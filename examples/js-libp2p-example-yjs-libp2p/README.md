@@ -55,27 +55,35 @@ This example implements the **Universal Connectivity Extension Protocol** - a de
 
 Another implementing app is [LLMesh a browser-based P2P chat mesh](https://github.com/Nkovaturient/LLMesh) where LLM joins as a peer via UCEP extensions, creating a living network where AI and humans chat together in a fully decentralized manner.
 
+The protocol is specified in [Le-Space/ucep-spec](https://github.com/Le-Space/ucep-spec) (wire revision 2) and this example runs on its reference library, [`@le-space/ucep`](https://github.com/Le-Space/ucep-js) — the same one Le Space Belege and its invoicing app use in production.
+
 ### How It Works
 
-1. **Discovery**: Extensions are discovered via libp2p's identify protocol (`/uc/extension/sheet/1.0.0`)
-2. **Manifest Fetching**: Peers fetch extension metadata (name, commands, description)
-3. **Command Execution**: Remote peers can execute commands via direct libp2p streams:
-   - `/sheet-help` - Show available commands
-   - `/sheet-show <topic> <cell>` - Read cell values
-   - `/sheet-write <topic> <cell>=<value>` - Write to cells
-   - `/sheet-list` - List active spreadsheet topics
+1. **Discovery**: the sheet registers `/uc/extension/sheet/1.1.0` as a libp2p protocol, so every peer learns it through identify — no registry
+2. **Manifest**: a consumer fetches name, version, commands and scopes (always public)
+3. **Commands**, by position (`/sheet-show spreadsheet-1 A1`, as the UC chat sends them) or as JSON (`{ topic, cell }`):
+   - `/sheet-help`, `/sheet-show <topic> <cell>`, `/sheet-write <topic> <cell>=<value>`, `/sheet-list`
+   - `/sheet-snapshot <topic>` — freeze the sheet: its state becomes a block on IPFS, addressed by its CID
+   - `/sheet-snapshots <topic>` — the snapshots taken, newest first
+   - `/sheet-restore <topic> <cid>` — fetch a snapshot by CID over Bitswap, verify it, put the sheet back to it (needs the scope `sheet:cells:write`: pair first)
+
+**Snapshots** are the sheet as content-addressed blocks: a Helia node on the sheet's own libp2p node holds them, the list of them lives in the Yjs document and replicates with it, and a peer that restores one fetches the block on the connection it already has. The 📸 button in the toolbar takes one; the list under it restores.
 
 ### Testing Extensions
 
-Open the browser console and try:
+Open the browser console of one sheet and point it at another peer's:
 ```javascript
-// List discovered extensions
+// The consumer's catalogue of extensions it has seen
 window.listExtensions()
 
-// Test extension commands
-window.testExtension('sheet', 'help')
-window.testExtension('sheet', 'show', ['spreadsheet-1', 'A1'])
-window.testExtension('sheet', 'write', ['spreadsheet-1', 'B1=42'])
+// Call a sheet command on a peer, as another app would
+await window.testExtension('<peerId>', 'help')
+await window.testExtension('<peerId>', 'show', { topic: 'spreadsheet-1', cell: 'A1' })
+await window.testExtension('<peerId>', 'snapshot', { topic: 'spreadsheet-1' })
+
+// Restoring needs a grant: the provider hands out an invitation, the consumer pairs with it
+const { uri } = await window.sheet.extension.provider.createInvitation({ scopes: ['sheet:cells:write'] })
+await window.sheet.consumer.pairWithInvitation(uri)   // on the other sheet
 ```
 
 Or connect from the [Universal Connectivity chat app](https://universal-connectivity.fly.dev/) to control the spreadsheet via chat commands!

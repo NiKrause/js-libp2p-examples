@@ -3,17 +3,12 @@
 import { test, expect } from '@playwright/test'
 import { connectToSpreadsheet, waitForWebRTCConnection } from './helpers.js'
 
-const url = 'http://localhost:5173'
-
 test.describe.skip('undo/redo feature', () => {
-  test.setTimeout(120000)
+  test.setTimeout(240000)
 
   test('should undo and redo a single cell value change', async ({ browser }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `undo-test-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -69,9 +64,6 @@ test.describe.skip('undo/redo feature', () => {
   test('should undo multiple changes in order', async ({ browser }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `multi-undo-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -148,9 +140,6 @@ test.describe.skip('undo/redo feature', () => {
   test('should undo and redo formula changes', async ({ browser }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `formula-undo-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -215,9 +204,6 @@ test.describe.skip('undo/redo feature', () => {
   test('should show "Nothing to undo" when history is empty', async ({ browser }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `empty-undo-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -243,9 +229,6 @@ test.describe.skip('undo/redo feature', () => {
   test('should work with Ctrl+Shift+Z for redo', async ({ browser }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const testTopic = `shift-redo-${Date.now()}`
     await connectToSpreadsheet(page, testTopic)
 
@@ -289,10 +272,6 @@ test.describe.skip('undo/redo feature', () => {
 
     page1.on('console', msg => console.log('Page1:', msg.text()))
     page2.on('console', msg => console.log('Page2:', msg.text()))
-
-    await page1.goto(url)
-    await page2.goto(url)
-
     const testTopic = `collab-undo-${Date.now()}`
     await connectToSpreadsheet(page1, testTopic)
     await connectToSpreadsheet(page2, testTopic)

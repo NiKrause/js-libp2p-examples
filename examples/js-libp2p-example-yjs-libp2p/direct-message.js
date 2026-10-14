@@ -1,16 +1,16 @@
 /* eslint-disable no-console */
 
 import { peerIdFromString } from '@libp2p/peer-id'
-import { pbStream } from 'it-protobuf-stream'
-import { dm } from './protobuf/direct-message.js'
+import { pbStream } from '@libp2p/utils'
 import { DEBUG } from './constants.js'
+import { dm } from './protobuf/direct-message.js'
 
 /**
  * Direct Message Service for Universal Connectivity
- * 
+ *
  * Provides private peer-to-peer messaging between libp2p nodes.
  * Uses protobuf streams for reliable request-response communication.
- * 
+ *
  * Protocol: /universal-connectivity/dm/1.0.0
  * Pattern: Request-Response with acknowledgment
  */
@@ -30,7 +30,7 @@ const ERRORS = {
 
 /**
  * Direct Message Service
- * 
+ *
  * This service handles:
  * - Sending private messages to specific peers
  * - Receiving and acknowledging incoming messages
@@ -75,7 +75,7 @@ export class DirectMessage {
    */
   async afterStart () {
     // Register protocol handler for incoming messages
-    await this.libp2p.handle(DIRECT_MESSAGE_PROTOCOL, async ({ stream, connection }) => {
+    await this.libp2p.handle(DIRECT_MESSAGE_PROTOCOL, async (stream, connection) => {
       await this.receive(stream, connection)
     })
 
@@ -99,6 +99,7 @@ export class DirectMessage {
 
   /**
    * Check if a peer supports direct messaging
+   *
    * @param {string} peerIdStr - Peer ID as string
    * @returns {boolean}
    */
@@ -108,7 +109,7 @@ export class DirectMessage {
 
   /**
    * Send a direct message to a peer
-   * 
+   *
    * @param {string} peerIdStr - Target peer ID as string
    * @param {string} message - Message content
    * @returns {Promise<boolean>} Success status
@@ -135,7 +136,7 @@ export class DirectMessage {
 
       // openConnection will return the current open connection if it already exists, or create a new one
       const conn = await this.libp2p.dial(peerId, { signal: AbortSignal.timeout(5000) })
-      
+
       if (!conn) {
         throw new Error(ERRORS.NO_CONNECTION)
       }
@@ -193,14 +194,13 @@ export class DirectMessage {
         })
       } catch (err) {
         stream?.abort(err)
-        throw err
       }
     }
   }
 
   /**
    * Receive and handle incoming direct message
-   * 
+   *
    * @param {object} stream - Incoming stream
    * @param {object} connection - Connection object
    */
@@ -221,13 +221,6 @@ export class DirectMessage {
       }
 
       await datastream.write(res, dm.DirectMessageResponse, { signal })
-
-      const detail = {
-        content: req.content,
-        type: req.type,
-        stream: stream,
-        connection: connection
-      }
 
       // Dispatch message event
       const event = new CustomEvent('dm:message', {
@@ -254,7 +247,6 @@ export class DirectMessage {
         })
       } catch (err) {
         stream?.abort(err)
-        throw err
       }
     }
   }
@@ -263,9 +255,9 @@ export class DirectMessage {
 /**
  * Factory function to create direct message service
  * Follows libp2p service pattern
- * 
+ *
  * @param {object} options - Service options
- * @returns {Function} Service factory
+ * @returns {(components: object) => object} Service factory
  */
 export function directMessage (options = {}) {
   return (components) => {

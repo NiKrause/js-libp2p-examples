@@ -65,10 +65,8 @@ export const RELAY_BOOTSTRAP_PROFILE = 'uc-go-peer'
 // cannot be reached (offline, API down). It will go stale — every relay deploy
 // mints a new peer ID — which is why it is the fallback and not the source.
 export const RELAY_BOOTSTRAP_FALLBACK = [
-  '/dns4/they-idea-quick-soda.2n6.me/tcp/443/tls/ws/p2p/16Uiu2HAkuwNWxbdqi4QAiX5HNNVA8hmk2Ya5LAAc5KUdSNwjLH7L',
-  '/dns6/they-idea-quick-soda.2n6.me/tcp/443/tls/ws/p2p/16Uiu2HAkuwNWxbdqi4QAiX5HNNVA8hmk2Ya5LAAc5KUdSNwjLH7L',
-  '/dns4/arena-soul-sniff-cube.2n6.me/tcp/443/tls/ws/p2p/16Uiu2HAmRCbUxTCZmDwPtRM7VnmjFHYxqCeQtGWLXG7ssLRczor2',
-  '/dns6/arena-soul-sniff-cube.2n6.me/tcp/443/tls/ws/p2p/16Uiu2HAmRCbUxTCZmDwPtRM7VnmjFHYxqCeQtGWLXG7ssLRczor2'
+  '/dns4/dose-multiply-mass-maximum.2n6.me/tcp/443/tls/ws/p2p/16Uiu2HAmD1icgrT9rUCbxsd7fEygKPxejXgmRGod5PjtRuQvEpVC',
+  '/dns6/dose-multiply-mass-maximum.2n6.me/tcp/443/tls/ws/p2p/16Uiu2HAmD1icgrT9rUCbxsd7fEygKPxejXgmRGod5PjtRuQvEpVC'
 ]
 
 export const DISCOVERY_CONFIG = {

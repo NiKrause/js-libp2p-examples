@@ -2,10 +2,6 @@ syntax = "proto3";
 
 package dm;
 
-service DirectMessage {
-  rpc DirectMessage (DirectMessageRequest) returns (DirectMessageResponse) {}
-}
-
 message Metadata {
   string clientVersion = 1; // client version
   int64 timestamp = 2;      // unix time

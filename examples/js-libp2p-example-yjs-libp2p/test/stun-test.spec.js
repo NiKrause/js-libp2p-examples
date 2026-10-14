@@ -2,8 +2,6 @@
 
 import { test, expect } from '@playwright/test'
 
-const url = 'http://localhost:5173'
-
 /**
  * Test STUN server connectivity from browser
  * This runs in the browser context to test if WebRTC can access STUN servers
@@ -21,9 +19,6 @@ test.describe('STUN Server Connectivity', () => {
       logs.push(`[${msg.type()}] ${msg.text()}`)
       console.log(`Browser: ${msg.text()}`)
     })
-
-    await page.goto(url)
-
     // Test STUN connectivity using WebRTC RTCPeerConnection
     const result = await page.evaluate(async () => {
       const stunServers = [
@@ -174,9 +169,6 @@ test.describe('STUN Server Connectivity', () => {
   test('should gather both host and srflx candidates', async ({ browser }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const candidates = await page.evaluate(async () => {
       const pc = new RTCPeerConnection({
         iceServers: [
@@ -241,9 +233,6 @@ test.describe('STUN Server Connectivity', () => {
   test('should compare ICE gathering across different browsers', async ({ browser }) => {
     const context = await browser.newContext()
     const page = await context.newPage()
-
-    await page.goto(url)
-
     const browserInfo = await page.evaluate(async () => {
       const pc = new RTCPeerConnection({
         iceServers: [

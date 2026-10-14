@@ -200,7 +200,7 @@ export class Libp2pProvider {
    *
    * @private
    * @param {Uint8Array} update - The document update
-   * @param {any} origin - Origin of the update
+   * @param {unknown} origin - Origin of the update
    */
   _handleDocUpdate (update, origin) {
     if (origin === this) {
