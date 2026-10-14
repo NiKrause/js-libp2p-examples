@@ -1,5 +1,3 @@
-/* eslint-disable no-console */
-
 import { UcepError, createProvider } from '@le-space/ucep'
 import manifest from './extension-manifest.json'
 
@@ -19,28 +17,38 @@ export const SCOPES = Object.freeze({ write: 'sheet:cells:write' })
  * @param {import('libp2p').Libp2p} init.libp2p
  * @param {import('./spreadsheet-engine.js').SpreadsheetEngine} init.engine
  * @param {Awaited<ReturnType<import('./snapshots.js').startSnapshots>>} init.snapshots
- * @param {string} init.topic the sheet this peer is on
+ * @param {string} init.topic - the sheet this peer is on
  */
 export function createSheetExtension ({ libp2p, engine, snapshots, topic }) {
   let current = topic
   const topics = new Set([topic])
 
-  /** Positional for a 0.1 consumer, named for a 0.2 one. */
+  /**
+   * Positional for a 0.1 consumer, named for a 0.2 one.
+   *
+   * @param ctx
+   * @param index
+   * @param key
+   */
   const arg = (ctx, index, key) => {
     const v = ctx.argsJson ? ctx.argsJson[key] : ctx.args[index]
     return v == null ? '' : String(v)
   }
 
-  /** A command names a topic; this peer serves the one sheet it is on. */
+  /**
+   * A command names a topic; this peer serves the one sheet it is on.
+   *
+   * @param requested
+   */
   const onTopic = (requested) => {
-    if (!requested) throw new UcepError('INVALID_ARGUMENTS', 'a topic is required')
+    if (!requested) { throw new UcepError('INVALID_ARGUMENTS', 'a topic is required') }
     if (requested !== current) {
       throw new UcepError('UNAVAILABLE', `this peer is on "${current}", not "${requested}"`)
     }
   }
 
   const cell = (ref) => {
-    if (!/^[A-Za-z]+\d+$/.test(ref)) throw new UcepError('INVALID_ARGUMENTS', `not a cell: ${ref}`)
+    if (!/^[A-Za-z]+\d+$/.test(ref)) { throw new UcepError('INVALID_ARGUMENTS', `not a cell: ${ref}`) }
     return ref.toUpperCase()
   }
 
@@ -81,11 +89,11 @@ export function createSheetExtension ({ libp2p, engine, snapshots, topic }) {
           value = ctx.argsJson.value
         } else {
           const m = /^([A-Za-z]+\d+)=(.+)$/.exec(ctx.args[1] ?? '')
-          if (!m) throw new UcepError('INVALID_ARGUMENTS', 'Usage: /sheet-write <topic> <cell>=<value>')
+          if (!m) { throw new UcepError('INVALID_ARGUMENTS', 'Usage: /sheet-write <topic> <cell>=<value>') }
           ref = cell(m[1])
           value = m[2]
           const n = Number.parseFloat(value)
-          if (!value.startsWith('=') && !Number.isNaN(n) && value.trim() === String(n)) value = n
+          if (!value.startsWith('=') && !Number.isNaN(n) && value.trim() === String(n)) { value = n }
         }
         engine.setCell(ref, value)
         const c = engine.getCell(ref)
@@ -120,7 +128,7 @@ export function createSheetExtension ({ libp2p, engine, snapshots, topic }) {
       handler: async (ctx) => {
         onTopic(arg(ctx, 0, 'topic'))
         const cid = arg(ctx, 1, 'cid')
-        if (!cid) throw new UcepError('INVALID_ARGUMENTS', 'Usage: /sheet-restore <topic> <cid>')
+        if (!cid) { throw new UcepError('INVALID_ARGUMENTS', 'Usage: /sheet-restore <topic> <cid>') }
         try {
           return { topic: current, cid, ...(await snapshots.restore(cid)) }
         } catch (error) {

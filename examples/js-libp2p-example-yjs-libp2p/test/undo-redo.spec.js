@@ -3,8 +3,6 @@
 import { test, expect } from '@playwright/test'
 import { connectToSpreadsheet, waitForWebRTCConnection } from './helpers.js'
 
-const url = `http://127.0.0.1:${process.env.E2E_PORT || 5174}`
-
 test.describe.skip('undo/redo feature', () => {
   test.setTimeout(240000)
 

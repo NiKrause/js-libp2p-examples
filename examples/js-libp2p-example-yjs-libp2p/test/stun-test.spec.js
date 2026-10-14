@@ -2,8 +2,6 @@
 
 import { test, expect } from '@playwright/test'
 
-const url = `http://127.0.0.1:${process.env.E2E_PORT || 5174}`
-
 /**
  * Test STUN server connectivity from browser
  * This runs in the browser context to test if WebRTC can access STUN servers

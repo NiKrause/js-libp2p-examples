@@ -2,6 +2,8 @@
 
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
+import { delegatedRoutingV1HttpApiClient } from '@helia/delegated-routing-v1-http-api-client'
+import { createConsumer } from '@le-space/ucep'
 import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
 import { dcutr } from '@libp2p/dcutr'
 import { gossipsub } from '@libp2p/gossipsub'
@@ -11,25 +13,23 @@ import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
 import { createLibp2p } from 'libp2p'
-import * as Y from 'yjs'
-import { DEBUG, TIMEOUTS, INTERVALS, UC_CHAT_TOPIC, UC_FILE_TOPIC, DISCOVERY_CONFIG, PUBSUB_PEER_DISCOVERY_TOPIC } from './constants.js'
-import { resolveRelayBootstrapAddrs, selectAnnounceAddrs, toCircuitListenAddrs } from './aleph-bootstrap.js'
 import { sha256 } from 'multiformats/hashes/sha2'
-import { delegatedRoutingV1HttpApiClient } from '@helia/delegated-routing-v1-http-api-client'
+import * as Y from 'yjs'
+import { resolveRelayBootstrapAddrs, selectAnnounceAddrs, toCircuitListenAddrs } from './aleph-bootstrap.js'
+import { DEBUG, TIMEOUTS, INTERVALS, UC_CHAT_TOPIC, UC_FILE_TOPIC, PUBSUB_PEER_DISCOVERY_TOPIC } from './constants.js'
+import { DirectMessage } from './direct-message.js'
 import {
   getTransportType,
   updatePeerDisplay,
   updateMultiaddrDisplay
 } from './peer-display.js'
+import { createSheetExtension } from './sheet-extension.js'
+import { startSnapshots } from './snapshots.js'
 import {
   SpreadsheetEngine,
   SpreadsheetUI
 } from './spreadsheet-engine.js'
 import { Libp2pProvider } from './yjs-libp2p-provider.js'
-import { createConsumer } from '@le-space/ucep'
-import { createSheetExtension } from './sheet-extension.js'
-import { startSnapshots } from './snapshots.js'
-import { DirectMessage } from './direct-message.js'
 
 // UI elements (network and logging related)
 const topicInput = document.getElementById('topic')
@@ -70,6 +70,8 @@ const unreadMessages = new Map() // peerId -> unread count
  * Message ID function for gossipsub - must match UC's implementation
  * Uses sequence number to generate unique message IDs
  * This ensures compatibility with Universal Connectivity peers
+ *
+ * @param msg
  */
 async function msgIdFnStrictNoSign (msg) {
   const enc = new TextEncoder()
@@ -113,7 +115,7 @@ const displayChatMessage = (text, isSent = false, peerId = null) => {
 
   const headerEl = document.createElement('div')
   headerEl.className = 'chat-message-header'
-  
+
   // Make peer ID clickable if we have one and we're not in private mode with them
   if (currentChatMode === 'private' && peerId) {
     const peerShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
@@ -162,33 +164,35 @@ const displayChatMessage = (text, isSent = false, peerId = null) => {
 
 /**
  * Switch to private chat mode with a specific peer
+ *
+ * @param peerId
  */
-function switchToPrivateChat(peerId) {
+function switchToPrivateChat (peerId) {
   currentChatMode = 'private'
   currentPrivatePeerId = peerId
-  
+
   // Clear unread count when opening chat
   unreadMessages.set(peerId, 0)
-  
+
   const peerShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
   const chatHeaderEl = document.getElementById('chat-header')
   const chatTitleEl = document.getElementById('chat-title')
   const chatBackBtn = document.getElementById('chat-back-btn')
-  
+
   // Update UI
   chatTitleEl.textContent = `🔐 Private: ${peerShort}`
   chatHeaderEl.classList.add('private-chat')
   chatBackBtn.style.display = 'block'
-  
+
   // Clear and load private message history
   chatMessagesEl.innerHTML = ''
   const history = privateMessageHistory.get(peerId) || []
   history.forEach(msg => {
     displayChatMessage(msg.text, msg.isSent, peerId)
   })
-  
+
   log(`🔐 Switched to private chat with ${peerShort}`)
-  
+
   // Update peer display to clear unread badge
   updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl, directMessageService, switchToPrivateChat, UC_CHAT_TOPIC, unreadMessages)
 }
@@ -196,22 +200,22 @@ function switchToPrivateChat(peerId) {
 /**
  * Switch back to group chat mode
  */
-function switchToGroupChat() {
+function switchToGroupChat () {
   currentChatMode = 'group'
   currentPrivatePeerId = null
-  
+
   const chatHeaderEl = document.getElementById('chat-header')
   const chatTitleEl = document.getElementById('chat-title')
   const chatBackBtn = document.getElementById('chat-back-btn')
-  
+
   // Update UI
   chatTitleEl.textContent = '💬 Group Chat'
   chatHeaderEl.classList.remove('private-chat')
   chatBackBtn.style.display = 'none'
-  
+
   // Clear messages (group messages are shown in real-time)
   chatMessagesEl.innerHTML = ''
-  
+
   log('💬 Switched to group chat')
 }
 
@@ -415,7 +419,7 @@ async function connectWithTransports (mode = 'webrtc') {
           const when = new Date(e.at).toLocaleTimeString()
           li.innerHTML = `<code class="snapshot-cid" title="${e.cid}">${e.cid.slice(0, 10)}…${e.cid.slice(-6)}</code>` +
             ` <span class="snapshot-meta">${when} · ${e.cells} cells · ${e.bytes} B</span>` +
-            ` <button class="snapshot-restore" title="Put the sheet back to this snapshot">↩ Restore</button>`
+            ' <button class="snapshot-restore" title="Put the sheet back to this snapshot">↩ Restore</button>'
           li.querySelector('.snapshot-restore').onclick = async () => {
             try {
               const r = await snapshots.restore(e.cid)
@@ -447,7 +451,11 @@ async function connectWithTransports (mode = 'webrtc') {
     window.directMessageService = directMessageService
     /**
      * Call a sheet command on a peer, as another app would:
-     *   testExtension('<peerId>', 'show', { topic: 'spreadsheet-1', cell: 'A1' })
+     * `testExtension('<peerId>', 'show', { topic: 'spreadsheet-1', cell: 'A1' })`
+     *
+     * @param peerId
+     * @param command
+     * @param argsJson
      */
     window.testExtension = async (peerId, command, argsJson = {}) => {
       await ucepConsumer.addProvider(peerId).catch(() => {})
@@ -509,16 +517,16 @@ async function connectWithTransports (mode = 'webrtc') {
     libp2pNode.addEventListener('dm:message', (event) => {
       const { content, peerId, timestamp } = event.detail
       const peerShort = peerId ? peerId.slice(0, 8) + '...' + peerId.slice(-4) : 'unknown'
-      
+
       console.log(`🔐 Private message from ${peerShort}: "${content}"`)
       log(`🔐 Private message from ${peerShort}`)
-      
+
       // Store message in history
       if (!privateMessageHistory.has(peerId)) {
         privateMessageHistory.set(peerId, [])
       }
       privateMessageHistory.get(peerId).push({ text: content, isSent: false, timestamp })
-      
+
       // Display message if we're in private chat with this peer
       if (currentChatMode === 'private' && currentPrivatePeerId === peerId) {
         displayChatMessage(content, false, peerId)
@@ -529,7 +537,7 @@ async function connectWithTransports (mode = 'webrtc') {
         // Show notification that we received a message from someone else
         log(`📫 New private message from ${peerShort}`)
       }
-      
+
       // Update peer display to show new message indicator
       updatePeerDisplay(libp2pNode, peerCountEl, peersEl, peerListEl, directMessageService, switchToPrivateChat, UC_CHAT_TOPIC, unreadMessages)
     })
@@ -621,16 +629,16 @@ async function connectWithTransports (mode = 'webrtc') {
     // Unified send message handler
     const handleSendMessage = async () => {
       const text = chatMessageInputEl.value.trim()
-      if (!text) return
-      
+      if (!text) { return }
+
       console.log(`📤 Sending message in ${currentChatMode} mode:`, text)
-      
+
       try {
         if (currentChatMode === 'private' && currentPrivatePeerId) {
           // Send private message
           console.log(`🔐 Sending DM to ${currentPrivatePeerId}`)
           await directMessageService.send(currentPrivatePeerId, text)
-          console.log(`✅ DM sent, displaying message...`)
+          console.log('✅ DM sent, displaying message...')
           displayChatMessage(text, true, currentPrivatePeerId)
           const peerShort = currentPrivatePeerId.slice(0, 8) + '...' + currentPrivatePeerId.slice(-4)
           log(`🔐 Private message sent to ${peerShort}`)
@@ -1079,7 +1087,7 @@ setTimeout(() => {
   // `?topic=` names the sheet before the auto-connect, so a test (or a link)
   // never races the 100 ms against typing into the field.
   const topicFromUrl = new URLSearchParams(window.location.search).get('topic')
-  if (topicFromUrl) topicInput.value = topicFromUrl
+  if (topicFromUrl) { topicInput.value = topicFromUrl }
   if (!libp2pNode) {
     connectWithTransports('webrtc')
   }

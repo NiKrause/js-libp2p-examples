@@ -89,173 +89,172 @@ let pendingUpdate = false
  * @param {HTMLElement} peersEl - Element to show/hide peers section
  * @param {HTMLElement} peerListEl - Element to display peer list
  * @param {object} directMessageService - Direct message service instance (optional)
- * @param {Function} onPeerClick - Callback when clicking DM-capable peer (optional)
+ * @param {(peerId: string) => void} onPeerClick - Callback when clicking DM-capable peer (optional)
  * @param {string} chatTopic - Chat topic to filter by (optional, e.g., 'universal-connectivity')
  * @param {Map} unreadMessages - Map of peerId to unread message count (optional)
  */
+// eslint-disable-next-line complexity -- one pass over every peer, transport and badge; splitting it would not make it clearer
 export async function updatePeerDisplay (libp2pNode, peerCountEl, peersEl, peerListEl, directMessageService = null, onPeerClick = null, chatTopic = null, unreadMessages = null) {
   if (!libp2pNode) {
     return
   }
-  
+
   // If an update is in progress, mark that we need another update and return
   if (updateInProgress) {
     pendingUpdate = true
     return
   }
-  
+
   updateInProgress = true
-  
+
   try {
+    const connections = libp2pNode.getConnections()
+    const peerMap = new Map()
 
-  const connections = libp2pNode.getConnections()
-  const peerMap = new Map()
-
-  // Group connections by peer
-  for (const conn of connections) {
-    const peerId = conn.remotePeer.toString()
-    if (!peerMap.has(peerId)) {
-      peerMap.set(peerId, [])
-    }
-
-    const remoteAddr = conn.remoteAddr.toString()
-    const transport = getTransportType(remoteAddr)
-
-    // Gather connection metadata for tooltip
-    const direction = conn.direction || 'unknown'
-    const status = conn.status || 'unknown'
-    const timeline = conn.timeline || {}
-    const connId = conn.id || 'unknown'
-
-    peerMap.get(peerId).push({
-      transport,
-      addr: remoteAddr,
-      direction,
-      status,
-      connId,
-      timeline
-    })
-  }
-
-  // Get chat topic subscribers if filtering is enabled
-  let chatSubscribers = new Set()
-  if (chatTopic) {
-    const subscribers = libp2pNode.services.pubsub.getSubscribers(chatTopic)
-    subscribers.forEach(p => chatSubscribers.add(p.toString()))
-  }
-
-  // Batch all DM capability checks first to avoid DOM flickering
-  const peerCapabilities = new Map()
-  for (const [peerId] of peerMap) {
-    const isDMCapable = directMessageService ? directMessageService.isDMPeer(peerId) : false
-    const hasChat = chatTopic ? chatSubscribers.has(peerId) : true
-    peerCapabilities.set(peerId, { isDMCapable, hasChat })
-  }
-
-  // Now build the DOM in one pass
-  peerListEl.innerHTML = ''
-  let displayedPeerCount = 0
-  
-  for (const [peerId, transports] of peerMap) {
-    const { isDMCapable, hasChat } = peerCapabilities.get(peerId)
-    
-    // Show peer if they have chat OR DM support
-    if (!hasChat && !isDMCapable) {
-      continue
-    }
-    
-    displayedPeerCount++
-
-    const peerDiv = document.createElement('div')
-    peerDiv.className = isDMCapable ? 'peer dm-capable' : 'peer no-dm'
-    
-    // Build tooltip with transport information
-    const tooltipLines = []
-    if (isDMCapable) {
-      tooltipLines.push('🔐 Click to send private message')
-    } else {
-      tooltipLines.push('⚠️ Direct message not supported by this peer')
-    }
-    tooltipLines.push('')
-    tooltipLines.push(`Connections (${transports.length}):`)  
-    
-    // Group and count transports
-    const transportCounts = new Map()
-    transports.forEach(t => {
-      const key = `${t.transport}-${t.direction}`
-      if (!transportCounts.has(key)) {
-        transportCounts.set(key, { transport: t.transport, direction: t.direction, count: 0 })
+    // Group connections by peer
+    for (const conn of connections) {
+      const peerId = conn.remotePeer.toString()
+      if (!peerMap.has(peerId)) {
+        peerMap.set(peerId, [])
       }
-      transportCounts.get(key).count++
-    })
-    
-    // Add transport info to tooltip
-    transportCounts.forEach(({ transport, direction, count }) => {
-      const dirIcon = direction === 'inbound' ? '←' : direction === 'outbound' ? '→' : '•'
-      const countText = count > 1 ? ` ×${count}` : ''
-      tooltipLines.push(`  ${transport} ${dirIcon}${countText}`)
-    })
-    
-    peerDiv.title = tooltipLines.join('\n')
 
-    const peerIdSpan = document.createElement('div')
-    peerIdSpan.className = 'peer-id'
-    const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
-    peerIdSpan.textContent = peerIdShort
-    peerIdSpan.title = `${peerId}\nClick to copy full ID`
-    peerIdSpan.style.cursor = 'pointer'
-    peerIdSpan.onclick = (e) => {
-      e.stopPropagation() // Prevent triggering peer click
-      navigator.clipboard.writeText(peerId)
-      const originalText = peerIdSpan.textContent
-      peerIdSpan.textContent = 'Copied!'
-      setTimeout(() => { peerIdSpan.textContent = originalText }, 1000)
+      const remoteAddr = conn.remoteAddr.toString()
+      const transport = getTransportType(remoteAddr)
+
+      // Gather connection metadata for tooltip
+      const direction = conn.direction || 'unknown'
+      const status = conn.status || 'unknown'
+      const timeline = conn.timeline || {}
+      const connId = conn.id || 'unknown'
+
+      peerMap.get(peerId).push({
+        transport,
+        addr: remoteAddr,
+        direction,
+        status,
+        connId,
+        timeline
+      })
     }
-    peerDiv.appendChild(peerIdSpan)
-    
-    // Add unread message indicator if there are unread messages
-    if (unreadMessages && unreadMessages.has(peerId)) {
-      const unreadCount = unreadMessages.get(peerId)
-      if (unreadCount > 0) {
-        const unreadBadge = document.createElement('span')
-        unreadBadge.className = 'unread-badge'
-        unreadBadge.textContent = `${unreadCount} unread`
-        unreadBadge.style.cssText = 'background: #ff5722; color: white; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.7em; margin-left: 0.5rem; font-weight: 600;'
-        peerDiv.appendChild(unreadBadge)
+
+    // Get chat topic subscribers if filtering is enabled
+    const chatSubscribers = new Set()
+    if (chatTopic) {
+      const subscribers = libp2pNode.services.pubsub.getSubscribers(chatTopic)
+      subscribers.forEach(p => chatSubscribers.add(p.toString()))
+    }
+
+    // Batch all DM capability checks first to avoid DOM flickering
+    const peerCapabilities = new Map()
+    for (const [peerId] of peerMap) {
+      const isDMCapable = directMessageService ? directMessageService.isDMPeer(peerId) : false
+      const hasChat = chatTopic ? chatSubscribers.has(peerId) : true
+      peerCapabilities.set(peerId, { isDMCapable, hasChat })
+    }
+
+    // Now build the DOM in one pass
+    peerListEl.innerHTML = ''
+    let displayedPeerCount = 0
+
+    for (const [peerId, transports] of peerMap) {
+      const { isDMCapable, hasChat } = peerCapabilities.get(peerId)
+
+      // Show peer if they have chat OR DM support
+      if (!hasChat && !isDMCapable) {
+        continue
       }
-    }
 
-    // Transport badges hidden - info only in tooltip
-    // const transportDiv = createTransportBadges(transports)
-    // peerDiv.appendChild(transportDiv)
+      displayedPeerCount++
 
-    // Add click handler for DM-capable peers
-    if (isDMCapable && onPeerClick) {
-      peerDiv.style.cursor = 'pointer'
-      peerDiv.onclick = (e) => {
-        // Don't interfere with peer ID copy
-        if (e.target !== peerIdSpan) {
-          onPeerClick(peerId)
+      const peerDiv = document.createElement('div')
+      peerDiv.className = isDMCapable ? 'peer dm-capable' : 'peer no-dm'
+
+      // Build tooltip with transport information
+      const tooltipLines = []
+      if (isDMCapable) {
+        tooltipLines.push('🔐 Click to send private message')
+      } else {
+        tooltipLines.push('⚠️ Direct message not supported by this peer')
+      }
+      tooltipLines.push('')
+      tooltipLines.push(`Connections (${transports.length}):`)
+
+      // Group and count transports
+      const transportCounts = new Map()
+      transports.forEach(t => {
+        const key = `${t.transport}-${t.direction}`
+        if (!transportCounts.has(key)) {
+          transportCounts.set(key, { transport: t.transport, direction: t.direction, count: 0 })
+        }
+        transportCounts.get(key).count++
+      })
+
+      // Add transport info to tooltip
+      transportCounts.forEach(({ transport, direction, count }) => {
+        const dirIcon = { inbound: '←', outbound: '→' }[direction] ?? '•'
+        const countText = count > 1 ? ` ×${count}` : ''
+        tooltipLines.push(`  ${transport} ${dirIcon}${countText}`)
+      })
+
+      peerDiv.title = tooltipLines.join('\n')
+
+      const peerIdSpan = document.createElement('div')
+      peerIdSpan.className = 'peer-id'
+      const peerIdShort = peerId.slice(0, 8) + '...' + peerId.slice(-4)
+      peerIdSpan.textContent = peerIdShort
+      peerIdSpan.title = `${peerId}\nClick to copy full ID`
+      peerIdSpan.style.cursor = 'pointer'
+      peerIdSpan.onclick = (e) => {
+        e.stopPropagation() // Prevent triggering peer click
+        navigator.clipboard.writeText(peerId)
+        const originalText = peerIdSpan.textContent
+        peerIdSpan.textContent = 'Copied!'
+        setTimeout(() => { peerIdSpan.textContent = originalText }, 1000)
+      }
+      peerDiv.appendChild(peerIdSpan)
+
+      // Add unread message indicator if there are unread messages
+      if (unreadMessages && unreadMessages.has(peerId)) {
+        const unreadCount = unreadMessages.get(peerId)
+        if (unreadCount > 0) {
+          const unreadBadge = document.createElement('span')
+          unreadBadge.className = 'unread-badge'
+          unreadBadge.textContent = `${unreadCount} unread`
+          unreadBadge.style.cssText = 'background: #ff5722; color: white; padding: 0.2rem 0.4rem; border-radius: 3px; font-size: 0.7em; margin-left: 0.5rem; font-weight: 600;'
+          peerDiv.appendChild(unreadBadge)
         }
       }
+
+      // Transport badges hidden - info only in tooltip
+      // const transportDiv = createTransportBadges(transports)
+      // peerDiv.appendChild(transportDiv)
+
+      // Add click handler for DM-capable peers
+      if (isDMCapable && onPeerClick) {
+        peerDiv.style.cursor = 'pointer'
+        peerDiv.onclick = (e) => {
+        // Don't interfere with peer ID copy
+          if (e.target !== peerIdSpan) {
+            onPeerClick(peerId)
+          }
+        }
+      }
+
+      peerListEl.appendChild(peerDiv)
     }
 
-    peerListEl.appendChild(peerDiv)
-  }
-  
-  // Update count after displaying all peers
-  peerCountEl.textContent = displayedPeerCount
+    // Update count after displaying all peers
+    peerCountEl.textContent = displayedPeerCount
 
-  // Show/hide peers section
-  if (displayedPeerCount > 0) {
-    peersEl.style.display = 'flex'
-  } else {
-    peersEl.style.display = 'none'
-  }
-  
+    // Show/hide peers section
+    if (displayedPeerCount > 0) {
+      peersEl.style.display = 'flex'
+    } else {
+      peersEl.style.display = 'none'
+    }
   } finally {
     updateInProgress = false
-    
+
     // If there was a pending update request, run it now
     if (pendingUpdate) {
       pendingUpdate = false

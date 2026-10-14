@@ -10,7 +10,11 @@ import { readFileSync } from 'node:fs'
  * @param {string} [topic] - Topic name for the connection
  * @param {string} [mode] - Connection mode ('webrtc' or 'websocket') - parameter kept for compatibility but not used
  */
-/** The suite's own relay (test/global-setup.js) and the sheet, handed to the app by URL. */
+/**
+ * The suite's own relay (test/global-setup.js) and the sheet, handed to the app by URL.
+ *
+ * @param topic
+ */
 export function pageUrl (topic) {
   const port = process.env.E2E_PORT || 5174
   const relay = JSON.parse(readFileSync('test/relay-info.json', 'utf8')).multiaddr
@@ -132,7 +136,7 @@ export async function waitForPeerConnection (page, timeout = 60000) {
     } catch (e) { console.error('RELAY DEBUG unavailable', e.message) }
     const pageState = await page.evaluate(() => {
       const n = window.libp2pNode
-      if (!n) return { error: 'no window.libp2pNode' }
+      if (!n) { return { error: 'no window.libp2pNode' } }
       const ps = n.services.pubsub
       const t = 'universal-connectivity-browser-peer-discovery'
       return {

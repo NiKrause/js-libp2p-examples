@@ -1,5 +1,3 @@
-/* eslint-disable no-console */
-
 import { withBitswap } from '@helia/bitswap'
 import { withLibp2p } from '@helia/libp2p'
 import { MemoryBlockstore } from 'blockstore-core'
@@ -28,8 +26,8 @@ import * as Y from 'yjs'
 
 /**
  * @param {object} init
- * @param {import('libp2p').Libp2p} init.libp2p the sheet's node
- * @param {Y.Doc} init.doc the sheet's document
+ * @param {import('libp2p').Libp2p} init.libp2p - the sheet's node
+ * @param {Y.Doc} init.doc - the sheet's document
  * @param {import('./spreadsheet-engine.js').SpreadsheetEngine} init.engine
  * @param {string} init.topic
  */
@@ -38,11 +36,23 @@ export async function startSnapshots ({ libp2p, doc, engine, topic }) {
     withLibp2p(
       createHeliaLight({ blockstore: new MemoryBlockstore(), datastore: new MemoryDatastore() }),
       libp2p
-    )
+    ),
+    {
+      // Two browsers usually only share a relayed ("limited") connection, and
+      // Bitswap refuses those by default — so a peer that had not managed the
+      // WebRTC upgrade could not fetch a snapshot at all (seen as
+      // LoadBlockFailedError in CI). A snapshot is a few KB; the relay's data
+      // limit is not a concern for it.
+      runOnLimitedConnections: true
+    }
   ).start()
   const list = doc.getArray('snapshots')
 
-  /** The CID a block of bytes has: raw codec, sha2-256. */
+  /**
+   * The CID a block of bytes has: raw codec, sha2-256.
+   *
+   * @param bytes
+   */
   async function address (bytes) {
     const digest = await sha256.digest(bytes)
     return { cid: CID.createV1(raw.code, digest), sha256: bytesToString(digest.digest, 'base16') }
@@ -52,7 +62,7 @@ export async function startSnapshots ({ libp2p, doc, engine, topic }) {
    * Freeze the sheet as it is. The state goes into the blockstore, the entry
    * into the document's own list.
    *
-   * @param {{ by?: string }} [options] who asked — the caller's PeerId, or ours
+   * @param {{ by?: string }} [options] - who asked — the caller's PeerId, or ours
    */
   async function take ({ by = libp2p.peerId.toString() } = {}) {
     const bytes = Y.encodeStateAsUpdate(doc)
@@ -101,7 +111,7 @@ export async function startSnapshots ({ libp2p, doc, engine, topic }) {
       offset += chunk.byteLength
     }
     const { cid: actual } = await address(bytes)
-    if (!actual.equals(cid)) throw new Error(`block does not match its CID: got ${actual}, wanted ${cid}`)
+    if (!actual.equals(cid)) { throw new Error(`block does not match its CID: got ${actual}, wanted ${cid}`) }
     return bytes
   }
 
@@ -137,8 +147,8 @@ export async function startSnapshots ({ libp2p, doc, engine, topic }) {
     const { cells } = await peek(cidString, options)
     const live = doc.getMap('cells')
     doc.transact(() => {
-      for (const coord of [...live.keys()]) if (!(coord in cells)) engine.clearCell(coord)
-      for (const [coord, cell] of Object.entries(cells)) engine.setCell(coord, cell.formula ?? cell.value)
+      for (const coord of [...live.keys()]) { if (!(coord in cells)) { engine.clearCell(coord) } }
+      for (const [coord, cell] of Object.entries(cells)) { engine.setCell(coord, cell.formula ?? cell.value) }
     })
     return { cells: Object.keys(cells).length }
   }
@@ -150,7 +160,11 @@ export async function startSnapshots ({ libp2p, doc, engine, topic }) {
     fetch,
     peek,
     restore,
-    /** Fires whenever the list changes — ours or a peer's. @param {() => void} fn */
+    /**
+     * Fires whenever the list changes — ours or a peer's.
+     *
+     * @param {() => void} fn
+     */
     onChange (fn) {
       list.observe(fn)
       return () => list.unobserve(fn)

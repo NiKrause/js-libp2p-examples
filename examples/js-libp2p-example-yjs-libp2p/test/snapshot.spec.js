@@ -4,16 +4,32 @@
 // CID over UCEP, fetches the block over Bitswap on the connection it already
 // has, verifies it against the CID — and may put the sheet back to it once it
 // has paired for the scope that rewrites cells.
-import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
+import { test, expect } from '@playwright/test'
 import { connectToSpreadsheet, waitForPeerConnection } from './helpers.js'
 
 const url = `http://127.0.0.1:${process.env.E2E_PORT || 5174}`
 
-/** The suite's own relay (test/global-setup.js) and the sheet, handed to the app by URL. */
+/**
+ * The suite's own relay (test/global-setup.js) and the sheet, handed to the app by URL.
+ *
+ * @param topic
+ */
 const pageUrl = (topic) => `${url}/?relay=${encodeURIComponent(JSON.parse(readFileSync('test/relay-info.json', 'utf8')).multiaddr)}&topic=${encodeURIComponent(topic)}`
 
-/** @param {import('@playwright/test').Page} page @param {string} coord */
+/**
+ * Whether `page` holds a libp2p connection to the peer with id `peer`.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {string} peer
+ */
+const isConnectedTo = (page, peer) =>
+  page.evaluate((p) => window.libp2pNode.getPeers().some((id) => id.toString() === p), peer)
+
+/**
+ * @param {import('@playwright/test').Page} page
+ * @param {string} coord
+ */
 const cellValue = (page, coord) =>
   page.evaluate((c) => window.sheet.engine.getCell(c).value, coord)
 
@@ -27,8 +43,8 @@ test.describe('Snapshots as CIDs over UCEP', () => {
     const context2 = await browser.newContext()
     const page1 = await context1.newPage()
     const page2 = await context2.newPage()
-    page1.on('console', (msg) => { if (msg.type() === 'error') console.log('Page1:', msg.text()) })
-    page2.on('console', (msg) => { if (msg.type() === 'error') console.log('Page2:', msg.text()) })
+    page1.on('console', (msg) => { if (msg.type() === 'error') { console.log('Page1:', msg.text()) } })
+    page2.on('console', (msg) => { if (msg.type() === 'error') { console.log('Page2:', msg.text()) } })
 
     try {
       const topic = `snap-${Date.now()}`
@@ -40,10 +56,7 @@ test.describe('Snapshots as CIDs over UCEP', () => {
       await waitForPeerConnection(page2, 180_000)
       const peer1 = await page1.evaluate(() => window.libp2pNode.peerId.toString())
       // Not just "some peer": page 2 is connected to page 1 itself.
-      await expect.poll(
-        () => page2.evaluate((p) => window.libp2pNode.getPeers().some((id) => id.toString() === p), peer1),
-        { timeout: 120_000 }
-      ).toBe(true)
+      await expect.poll(() => isConnectedTo(page2, peer1), { timeout: 120_000 }).toBe(true)
       console.log('both pages connected; transports:', await page2.evaluate((p) =>
         window.libp2pNode.getConnections().filter((c) => c.remotePeer.toString() === p).map((c) => c.remoteAddr.toString()), peer1))
 

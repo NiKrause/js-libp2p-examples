@@ -9,7 +9,7 @@
     "relay": "node relay.js",
     "relay:debug": "DEBUG=libp2p:* node relay.js",
     "pretest": "npm run build",
-    "test": "npm run build && npm run test:chrome && npm run test:firefox && npm run test:webkit",
+    "test": "npm run build && playwright test --project=chromium",
     "test:firefox": "npm run build && playwright test --project=firefox",
     "test:chrome": "npm run build && playwright test --project=chromium",
     "test:webkit": "npm run build && playwright test --project=webkit"
@@ -49,7 +49,7 @@
     "it-pushable": "^3.2.3",
     "libp2p": "^3.3.7",
     "multiformats": "^14.0.5",
-    "protons-runtime": "^5.5.0",
+    "protons-runtime": "^8.0.1",
     "uint8arraylist": "^3.0.1",
     "uint8arrays": "^5.1.0",
     "vite": "^6.0.3",
@@ -63,7 +63,7 @@
     "@playwright/test": "^1.56.1",
     "eslint": "^9.38.0",
     "globals": "^16.4.0",
-    "protons": "^7.7.0",
+    "protons": "^10.0.5",
     "test-ipfs-example": "^1.0.0"
   }
 }

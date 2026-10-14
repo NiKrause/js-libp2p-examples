@@ -3,8 +3,6 @@
 import { test, expect } from '@playwright/test'
 import { connectToSpreadsheet, waitForWebRTCConnection } from './helpers.js'
 
-const url = `http://127.0.0.1:${process.env.E2E_PORT || 5174}`
-
 test.describe('Copy/Paste Feature', () => {
   test.setTimeout(240000)
 
@@ -41,7 +39,7 @@ test.describe('Copy/Paste Feature', () => {
     await page.keyboard.press('ControlOrMeta+V')
 
     // Wait for paste feedback
-    // TODO: Re-enable when clipboard feedback timing issues are resolved
+    // Re-enable when clipboard feedback timing issues are resolved
     // await page.waitForFunction(
     //   () => {
     //     const feedback = document.getElementById('clipboard-feedback')
@@ -102,7 +100,7 @@ test.describe('Copy/Paste Feature', () => {
     await page.keyboard.press('ControlOrMeta+C')
 
     // Wait for clipboard feedback (accept either success or fallback message)
-    // TODO: Re-enable when clipboard feedback timing issues are resolved
+    // Re-enable when clipboard feedback timing issues are resolved
     // await page.waitForFunction(
     //   () => {
     //     const feedback = document.getElementById('clipboard-feedback')
@@ -159,7 +157,7 @@ test.describe('Copy/Paste Feature', () => {
     await page.keyboard.press('ControlOrMeta+X')
 
     // Wait for clipboard feedback
-    // TODO: Re-enable when clipboard feedback timing issues are resolved
+    // Re-enable when clipboard feedback timing issues are resolved
     // await page.waitForFunction(
     //   () => {
     //     const feedback = document.getElementById('clipboard-feedback')
@@ -180,7 +178,7 @@ test.describe('Copy/Paste Feature', () => {
     await page.locator('#cell-D1').click()
 
     // Wait for paste feedback
-    // TODO: Re-enable when clipboard feedback timing issues are resolved
+    // Re-enable when clipboard feedback timing issues are resolved
     // await page.waitForFunction(
     //   () => {
     //     const feedback = document.getElementById('clipboard-feedback')
@@ -384,7 +382,7 @@ test.describe('Copy/Paste Feature', () => {
     await context.close()
   })
 
-  // TODO: Re-enable when clipboard feedback timing issues are resolved
+  // Re-enable when clipboard feedback timing issues are resolved
   // test('should show visual feedback notifications', async ({ browser }) => {
   //   const context = await browser.newContext()
   //   await context.grantPermissions(['clipboard-read', 'clipboard-write'])

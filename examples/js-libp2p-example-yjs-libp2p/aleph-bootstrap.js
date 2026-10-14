@@ -1,5 +1,3 @@
-/* eslint-disable no-console */
-
 import { discoverAlephBootstrapMultiaddrs } from '@le-space/aleph-bootstrap'
 import { RELAY_BOOTSTRAP_FALLBACK, RELAY_BOOTSTRAP_PROFILE } from './constants.js'
 
@@ -67,20 +65,21 @@ export async function resolveRelayBootstrapAddrs ({
  * reservation is enough to be reachable; the other relays stay in the dial set.
  *
  * @param {string[]} addresses
+ * @param limit
  */
 export function toCircuitListenAddrs (addresses, limit = 1) {
   const seen = new Set()
   const listenAddrs = []
 
   for (const address of addresses) {
-    if (!address.includes('/tls/ws')) continue
+    if (!address.includes('/tls/ws')) { continue }
 
     const peerId = address.split('/p2p/')[1]
-    if (peerId != null && seen.has(peerId)) continue
-    if (peerId != null) seen.add(peerId)
+    if (peerId != null && seen.has(peerId)) { continue }
+    if (peerId != null) { seen.add(peerId) }
 
     listenAddrs.push(`${address}/p2p-circuit`)
-    if (listenAddrs.length >= limit) break
+    if (listenAddrs.length >= limit) { break }
   }
 
   return listenAddrs
@@ -112,11 +111,11 @@ export function selectAnnounceAddrs (multiaddrs, limit = 4) {
   const seenRelays = new Set()
 
   for (const addr of [...preferred, ...dialable]) {
-    if (chosen.size >= limit) break
+    if (chosen.size >= limit) { break }
 
     const relay = addr.split('/p2p-circuit')[0].split('/p2p/')[1]
     if (relay != null) {
-      if (seenRelays.has(relay)) continue
+      if (seenRelays.has(relay)) { continue }
       seenRelays.add(relay)
     }
 
