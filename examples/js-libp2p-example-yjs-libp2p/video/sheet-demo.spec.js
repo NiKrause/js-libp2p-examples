@@ -39,7 +39,7 @@ const RESULT_STYLE = {
  *
  * @param {import('@playwright/test').Page} page
  * @param {string} title
- * @param {unknown} value `null` removes the box
+ * @param {unknown} value - `null` removes the box
  */
 async function show (page, title, value) {
   await page.evaluate(({ title, text, style }) => {
@@ -55,7 +55,11 @@ async function show (page, title, value) {
   }, { title, text: value === null ? null : JSON.stringify(value, null, 2), style: RESULT_STYLE })
 }
 
-/** @param {import('@playwright/test').Page} page @param {string} coord @param {string} value */
+/**
+ * @param {import('@playwright/test').Page} page - @param {string} coord @param {string} value
+ * @param coord
+ * @param value
+ */
 async function type (page, coord, value) {
   const cell = page.locator(`#cell-${coord}`)
   await cell.click()
