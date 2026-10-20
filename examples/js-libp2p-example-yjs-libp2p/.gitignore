@@ -32,5 +32,10 @@ yarn-error.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# The test relay generates its identity on first start; it is not a shared secret.
+relay-peer-id.json
+
+# Demo recordings (playwright.video.config.js)
 video/results/
 video/out/
